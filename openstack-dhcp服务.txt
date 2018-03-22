@@ -1,0 +1,127 @@
+http://www.cnblogs.com/sammyliu/p/4419195.html
+Nova 虚机获取固定IP （Fixed IP）主要分为两个步骤：
+（1）在创建虚机过程中，Neutron 随机生成 MAC 和 从配置数据中分配一个固定IP 地址，并保存到 Dnsmasq 的 hosts 文件中，让 Dnsmasq 做好准备。
+（2）虚机在启动时向 Dnsmasq 获取 IP 地址
+
+查找到dns命令空间所在的目录
+1、使用neutron agent-list命令查看dhcp agent运行在哪些物理节点上
+2、ssh登录到该物理节点上
+3、ps -axu | grep dns可以查看到dhcp所在的文件目录
+ps -axu | grep dns
+--pid-file=/var/lib/neutron/dhcp/33e7c71e-22e8-4934-bfc2-224d1ca1
+4、进入到这个目录下，查看dhcp服务使用的一些配置信息
+5、dhcp服务分配出去的ip地址都记录保存在上述目录中的host文件中
+=============
+创建虚机时的DHCP数据流
+Nova-compute 在创建虚机时，需要 Neutron 所做的主要事情之一就是分配一个 MAC 和 一个或者多个固定 IP 地址，
+该过程从 Nova-compute 向 Neutron server(在控制节点上)申请 Port 开始
+
+1、计算节点上的nova compute服务向控制节点controller发送创建端口port的api请求
+2、控制节点接受到这个api请求以后，对这个请求进行解析，发现是创建端口的请求，
+把这个请求给了控制节点的ml2plugin这个插件进行处理
+3、ml2plugin这个插件，把创建端口的请求，发送给控制节点上的neutrondbpluginv2插件
+（要对数据库操作了）
+4、控制节点上neutrondbpluginv2插件，生成随机的mac地址
+5、控制节点上neutrondbpluginv2插件，根据mac地址，在控制节点的数据库db中，构造端口port
+6、控制节点上neutrondbpluginv2插件,给ml2plugin插件返回端口port
+7、控制节点上的ML2Plugin插件，通知neutron节点上的openvswitch进行预提交create_port_precommit
+8、控制节点上的ML2Plugin插件，通知neutron节点上的l3_agent插件，我要添加端口
+9、控制节点上的ML2Plugin插件，在neutron节点上的openvswitch进行提交，create_port_postcommit
+10、控制节点上的ML2Plugin插件，在neutron节点上的openvswitch进行某种端口的绑定(bind_port)
+11、控制节点上的ML2Plugin插件，跟控制节点，返回端口port
+12、当端口port创建好以后，控制节点会通知控制节点上的dhcpagentnotifyapi，告诉她，我端口port已经创建好了
+（在network，sunbnet上，port有更新、删除、创建时，都会通知dhcp agent）
+13、端口创建完成了，控制节点就给计算节点上的虚机返回一个port
+14、然后控制节点上的dhcpagentnotifyapi通过oslo.messaging异步消息，通知网络节点上的dhcp agent代理，
+15、网络节点上的dhcp agent代理，构造dnsmasq配置，并且重启该进程
+（Neturon 节点上的 DHCP Agent 根据接收到的 Port 创建完成通知，重新生成 Dnsmasq 的 hosts 文件，然后让 Dnsmasq 重新加载该文件）
+16、dnsmasq进程输出host文件，
+17、dnsmsq进程分配ip地址
+========================
+Neutron 网络概念
+Network：一个具有 tenant 隔离性的虚拟 2 层网络，它使用一个虚拟交换机。除了用于与外网连接的网络外，其它的 network 都只属于创建它的 tenant。
+虚机在创建时必须选择至少一个 network，也可以选择使用多块网卡和多个 network 连接。
+Subnet：表示一个 IPv4 或者 IPv6 地址区间，该区间内的地址可以被分配给虚机。
+一个 Subnet 可以使用一个 DHCP Server 用于分配指定区间内的 IP 地址给虚机。 
+Port：表示给定 network 上的一个虚拟交换端口，一个 Port 和虚机的一个网卡直接连接。
+Router: 在 subnet IP 段之间转发 IP 包，使用一个 external gate 和外网连接，以及连接若干个 subnet。
+关系：
+（1）tenant ---- 1:n ----- network ------- 1：n ------- subnet 
+（一个 tenant 可以拥有多个 network，一个 network 可以包含多个 subnet）
+
+（2）network ------- 1: n ------- port ------ 1:1 --- subnet
+（一个network 可以有多个 port， 每个 port 连接一个 subnet）
+（若创建虚机时指定的是 net-id，那么虚机将随机地从该 network 包含的 subnet 中分配 IP）
+
+（3）VM ----- 1 : n ---- NIC ----- 1:1 --- port
+（一个 VM 可以有多个 NIC，每个 NIC 连接一个 port）（可以在创建虚机时指定一个或者多个 port）
+
+（4）Tenant  ----- 1 : n ---- Router ----- 1 : n ------ subnet/ext-network 
+（一个 tenant 可以拥有多个 router，每个 router 在 Neutron network 节点上使用一个 Linux network namespace，
+其 ID 就是 neutron router-list 得到的 router 的 ID； 一个 router 连接一个通向外网的 gateway 和多个该 tenant 的 subnet）
+
+（5）network ---- 1 : 1 ---- Dnamasq  ----- 1: n ----- subnet 
+（一个 network 有一个 Dnsmasq 进程，该进程为多个启动了 DHCP 的 subnet 服务，分配它们拥有的 IP 给虚机）
+
+=================
+dhcp Agent 用户提供 DHCP 服务
+（1）在其所在的节点上的 /var/lib/neutron/dhcp/ 目录下，为每个 network 创建了一个子目录，
+目录名即 network id；每个子目录下，包含若干文件，比如 host 文件
+（2）为每个 network 启动一个 Dnsmasq 进程，该进程为该 network 中启动了 DHCP 的 subnet 提供服务。
+每一个 subnet 对应于一个 dhcp-range, 从 tag0 开始，依次是 tag1，tag2....
+（3）在 Port 或者 Subnet 有变化时，该 Dnsmasq 进程会重新读取新的配置，包括新的 host 文件，新的 dhcp-range 等
+===================
+关于 Dnsmasq
+Dnsmasq 进程
+
+Dnsmasq 是被 Neutron 用来提供 DHCP 和 DNS 服务的一个开源程序。它提供 DNS 缓存和 DHCP 服务功能。
+作为域名解析服务器(DNS)，dnsmasq可以通过缓存 DNS 请求来提高对访问过的网址的连接速度。
+作为DHCP 服务器，dnsmasq 可以为局域网电脑提供内网ip地址和路由。DNS和DHCP两个功能可以同时或分别单独实现。
+dnsmasq轻量且易配置，适用于主机较少的网络
+
+Neutron 为每个 network 启动一个 Dnsmasq 进程
+============
+Dnsmasq
+--no-hosts:  Don't read the hostnames in /etc/hosts.
+--bind-interfaces:  Setting this option also enables multiple instances of dnsmasq which provide DHCP service to run in the same machine.
+--interface: Listen only on the specified interface(s). 在指定的 interface 上监听 DHCP 请求。
+--dhcp-hostsfile: Read DHCP host information from the specified file. The advantage of storing DHCP host information in this file is that it can be changed without re-starting dnsmasq: the file will be re-read when dnsmasq receives SIGHUP. DHCP host 文件，dnsmasq 收到 SIGHUP 后会重新读入。没看到 Neutron code 发出该信息，而似乎每次都重启dnsmasq 进程。
+
+--addn-hosts: Additional hosts file. The file will be re-read when dnsmasq receives SIGHUP.
+
+--dhcp-optsfile: Read DHCP option information from the specified file when dnsmasq receiving SIGHUP.
+
+--dhcp-range: Enable the DHCP server. This option may be repeated, with different addresses, to enable DHCP service to more than one network. dnsmasq 默认关闭DHCP功能，该选项开启该功能。每个开启了 DHCP 的 subnet 拥有一个该项。
+--dhcp-lease-max: Limits dnsmasq to the specified maximum number of DHCP leases to prevent DoS attacks from hosts.
+--domain: Specifies DNS domains for the DHCP server.
+
+这些数据皆由数据库中数据计算得出。 
+================
+
+dnsmasq 默认地将日志写到 /var/log/syslog 中。可以在 Neutron 节点上做如下配置，使得它使用别的log 文件以便调试：
+（1）创建文件  /etc/neutron/dnsmasq.conf，在其中添加 
+
+log-facility = /var/log/neutron/dnsmasq.log
+log-dhcp
+
+（2）添加下面行到 /etc/neutron/dhcp_agent.ini:
+
+dnsmasq_config_file = /etc/neutron/dnsmasq.conf
+
+（3）运行下面命令重启 Neutron DHCP agent：
+
+sudo service neutron-dhcp-agent restart 
+
+=======================
+虚机启动时向 Dnsmasq 申请固定 IP
+Dnsmasq 准备好相应虚机的IP 申请请求了，它：准备好了 host 文件，里面有每个虚机的 MAC 地址 和 IP 对照表；绑定了 interface，可以收到请求；启动好了进程，可以为指定的 subnet 服务。
+
+获取 IP 的过程如下：
+
+（1）虚机 VM_1 开机，发出 DHCPDISCOVER 广播，该广播消息在整个 network 中都可以被收到。
+
+（2）广播到达 tap6356d532-32，Dnsmasq 在它上面监听。它检查其 host 文件，发现有对应项，它以  DHCPOFFER 消息将 IP 和 gateway IP 发回到 VM_1。如果有其他DHCP Server的话，它们也可能会发回IP 地址。
+
+（3）VM_1 发回 DHCPREQUEST 消息确认只接受第二步发的 DHCPOFFER，别的 DHCP Server 给的 IP 可以自行收回了。
+
+（4）Dnsmasq 发回确认消息 DHCPACK，整个过程结束

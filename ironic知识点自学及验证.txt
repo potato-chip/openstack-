@@ -1,0 +1,312 @@
+
+疑问
+1、Condutor实例支持的驱动在哪里配置的？
+2、ironic支持的驱动，在哪个配置文件里面进行配置
+3、要学的知识点oslo_config 模块
+4、peach框架是什么框架
+5、rpc调用是什么
+6、如何在ironic中添加一个驱动driver？
+7、openstack项目中test目录如何使用
+8、IPA是什么?
+Ironic Python Agent（简称IPA或者agent）
+9、ramdisk的作用是什么？
+RamDisk实际上是从内存中划出一部分作为一个分区使用，换句话说，就是把内存一部分当做硬盘使用，你可以向里边存文件。
+RamDisk并非一个实际的文件系统，而是一种将实际的文件系统装入内存的机制，并且可以作为根文件系统。实际上它使用的文件系统是ext2。
+在 linux 系统中 ,ramdisk 有二种 , 一种（initrd），另一种（initramfs）
+10、dd命令是做什么用的？
+dd命令用于复制文件并对原文件的内容进行转换和格式化处理
+建议在有需要的时候使用dd 对物理磁盘操作
+使用dd对磁盘操作时，最好使用块设备文件
+
+***************************
+部署物理机跟部署虚拟机的概念在nova来看是一样，都是nova通过创建虚拟机的方式来触发，
+只是底层nova-scheduler和nova-compute的驱动不一样。虚拟机的底层驱动采用的libvirt的虚拟化技术，
+而物理机是采用Ironic技术，ironic可以看成一组 Hypervisor API的集合，其功能与libvirt类似
+1、ironic也对应一个计算节点，这个计算节点采用的ironic驱动，不能跟采用Hypervisor驱动的计算节点混用，
+2、物理机的各种信息，收集好之后，注册到Nova中，作为Nova的可用信息
+3、调度这些资源的时候，通过Nova boot 进行调度
+
+ironic项目组成
+1、ironic： 包含ironic-api 和ironic-conductor进程
+2、python-ironicclinet: python clinet and CLI
+3、ironic-python-agent: 一个运行在deployment ramdisk中的Python程序，用于执行一系列部署动作
+4、pyghmi: 一个python的IPMI库，可以代替IPMItool
+5、ironic-inspector: 硬件自检工具
+6、ironic-lib： ironic的通用库函数
+7、ironic-webclinet ：web客户端
+8、ironic-ui：ironic的horizon插件
+9、bifrost：一套只运行Ironic的Ansible脚本
+Bifrost 是一套 Ansible 工具，它可以在一套已知的硬件上通过 Ironic 上自动部署一个基本的镜像。
+它为一次性操作系统提供了模块化的实用程序，并且尽可能地减少了操作。整个过程被分为三个步骤：
+安装：通过下载和建立机器镜像来准备本地环境，然后安装和配置必要的服务。
+注册：输入定制化的硬件清单文件，用 Ironic 注册硬件列表，配置之前下载好的镜像
+部署：指导 Ironic 将操作系统部署到每个机器上
+
+Ironic服务由以下组件构成。
+1、Ironic API，一个RESTful API服务，管理员和其他服务通过API与Ironic进行交互
+2、Ironic Conductor， 完成Ironic服务的绝大部分工作，通过API对外开放其功能，与Ironic API通过RPC进行交互；负责与其他组件进行交互
+3、Dirvers，真正管理物理机的模块，通过一系列的驱动来支持不同的硬件，不同的硬件不同的驱动，这个需要根据环境进行定制
+4、Database，用来存储资源信息
+5、消息队列
+
+部署架构
+云平台管理员可以使用RESTful API注册硬件，制定硬件的属性，比如MAC地址、IPMI证书。可以开启多个API服务实例。
+由于Ironic Conductor是唯一一个需要访问数据层和IPMI控制层的服务，为了安全起见，
+最好将conductor service 放在一个独立的主机上。为了支持各类驱动和管理故障迁移，可以有多个conductor实例存在，
+每个conductor实例可以运行多个drivers。
+
+消息路由
+每一个Condutor实例在启动时向数据库注册自己，注册的信息包含了本实例支持的驱动列表，
+并且定期更新自己记录的时间戳，这就使得所有的服务能够知道哪些Condutor和哪些驱动可用。
+物理机根据自己的驱动，使用一致性哈希算法映射在一组Condutor上。部署任务通过RPC从API层分发到合适的Condutor上。
+当Condutor实例加入或者退出集群，物理机会重新映射到不同的Condutor上，会触发驱动的多种动作，比如take-over 或者 clean-up动作
+================
+在安装操作系统时需要存储介质来存储系统镜像、需要控制物理机开关机，在网络部署环境中还需要预启动环境。
+PXE (预启动环境)
+iSCSI（存储）
+PXE(preboot execute environment) 预启动执行环境。PXE 是目前主流的无盘启动技术，
+它可以使计算机通过网络而不是从本地硬盘、光驱等设备启动，采用Client/Server的网络模式，
+在启动过程中，终端要求服务器分配IP地址，再用TFTP（trivial file transfer protocol）
+或MTFTP（multicast trivial file transfer protocol）协议下载一个启动软件包到本机内存中执行，
+由这个启动软件包完成终端基本软件设置，从而引导预先安装在服务器中的终端操作系统
+利用 PXE 进行系统安装需要被安装的主机上有 PXE 支持的网卡，不过现在的网卡一般都内嵌支持 PXE 的 ROM 芯片。
+当计算机引导时，BIOS 首先会把 PXE Client 调入内存中执行，PXE Client 被载入内存后，
+它便同时具有 DHCP client 和 TFTP Client 的功能，DHCP client 会向 DHCP server 请求 ip 分配给将要安装系统的主机，
+然后由 PXE Client 将放置在远端的文件通过 TFTP 下载到本地运行
+
+IPMI（电源管理）
+智能平台管理接口（IPMI：Intelligent Platform Management Interface）是一项应用于服务器管理系统设计的标准，
+提供管理和监控CPU、固件（BIOS、UEFI）和操作系统等功能，由Intel、HP、Dell和NEC公司于1998年共同提出。
+利用此接口标准设计有助于在不同类服务器系统硬件上实施系统管理，使不同平台的集中管理成为可能，
+目前有超过200家公司支持IPMI。IPMI信息通过网络连接到基板管理控制器 (BMC)进行交流，不依赖BOIS或者操作系统，
+这使得在操作系统不响应或未加载的情况下其仍然可以进行开关机、信息提取等操作。
+Ironic 正是利用此技术可以远程的对裸机进行上下电或者其他操作，而不是依赖物理开关或者操作系统
+IPMI可以在操作系统启动之前、管理系统启动之前、操作系统或者管理系统失败（与带内系统管理的最大特性）时对物理机进行管理，
+利用IPMI可以实现以下功能：
+可以在服务器通电（没有启动操作系统）情况下，对它进行远程管理：开机，关机，重启
+基于文本的控制台重定向，可以远程查看和修改BIOS设置，系统启动过程，登入系统等
+可以远程通过串口IP映射(SoL)连接服务器，解决ssh服务无法访问，远程安装系统，查看系统启动故障等问题
+可以通过系统的串行端口进行访问
+故障日志记录和 SNMP 警报发送，访问系统事件日志 (System Event Log ,SEL) 和传感器状况
+
+ironic 代码
+API
+
+ironic-api提供一系列接口，
+节点相关（node）
+节点增删改查（List, Searching, Creating, Updating, and Deleting)
+合法性检查
+设置和清除维修状态
+设置和获取boot device
+获取节点当前综合信息，包括power, provision, raid, console等
+更改电源状态
+更改节点提供状态（ manage, provide, inspect, clean, active, rebuild, delete (deleted), abort）
+设置RAID
+启动、停止、获取console
+查看、调用厂商定制方法（passthru方法）
+端口相关(Port)
+对物理端口（Port）的增删改查（Listing, Searching, Creating, Updating, and Deleting ），新建的时候就要指定端口的物理地址(一般是MAC地址)与Node进行绑定。
+查看与Node连接的端口
+驱动相关（driver）
+列举所有驱动
+查看驱动的详细信息、属性
+查看和调用厂商的驱动
+Chassis（机箱，一组node的集合）
+增删改查 
+Chassis这个资源类型是为了给节点分组用的，目前只有列举一组节点的功能。不赞成使用这个类型，将来可能会去除掉
+
+Conductor
+Ironic-Conductor是Ironic中最主要的模块，通过Ironic-API对外提供功能，与Ironic-API之间通过RPC进行通信，
+负责绝大部分工作，包括与Neutron通信为物理机配置网络信息，
+与Glance通信获取镜像，与Cinder和Swift通信进行为物理机提供存储
+同时控制着物理机状态的改变过程
+在高可用方面，conductor 采用一致性哈希算法保证Condutor节点新增退出时不影响Bare metal节点
+
+Drivers
+驱动是真正操作物理机的模块，Ironic的驱动以插件形式设计，厂商可以实现自己的驱动来为自己的设备提供特色化功能。
+实现自己的驱动只需要实现几个相关的方法即可。
+
+驱动架构
+驱动有不同的属性，每个属性能够完成一定的功能，这些属性分为三种接口：
+核心接口（core），最基本的功能，是其他服务的依赖，所有驱动都必须实现的，包括power,deploy.
+标准接口（standard）,实现通用功能，主要包括 management, console, boot, inspect, raid.
+厂商接口(vendor)，提供个性化功能
+
+驱动进行分类，得到：
+pxe/iscis
+agent
+fake (假的驱动，用于示例，测试)
+我们把fake驱动排除，其他的驱动可以分为两类：
+一是以pex 或者 iscsi 为前缀的驱动采用PXE部署机制，这些驱动将根硬盘作为iSCSI设备暴露给ironic conductor，由conductor将镜像复制到这里.
+二是以agent_ 为前缀的驱动采用Agent部署机制，conductor准备一个存储在swift上的镜像URL给IPA，由IPA下载镜像和完成部署的操作。
+从Kilo版开始，所有驱动使用agent进行部署
+每种驱动的功能会调用不同的模块来实现，比如:
+    pxe_ deploy 用的是iscsi_deploy.ISCSIDeploy(), boot用的是pxe.PXEBoot(), power根据后缀不同使用的不同
+    agent_ deploy用的是agent.AgentDeploy(), boot 用的是pxe.PXEBoot(), power根据后缀不同而不同
+    iscis_ deploy用的iscsi_deploy.ISCSIDeploy()，power根据后缀不同而不同
+Ironic-Python-Agent
+在PXE部署环境中，deploy模块是通过打开一个iSCSI设备，ironic-conductor将OS的镜像文件写到iSCSI的设备，
+所以deploy_ramdisk只是完成了iSCSI部署的工作，但开发者觉得既然已经把kernel和ramdisk传过去了，
+只做一个工作是不是太少了，而且还太缺乏灵活性了，所以就想在ramdisk里装一个Python Agent。 
+实际上就是多提供了一个Restful API,控制节点可以通过这个agent远程实现与物理机节点互动，而不仅仅使用dd命令
+Ironic Python Agent（简称IPA或者agent）是一个基于python的代理，用于处理ironic中裸机节点的一系列动作，
+比如检查、配置、清除和部署镜像。运行在ramdisk中，暴露出REST API给conductor。Ironic-Python-Agent可以在deploy模块直接访问硬件，提供以下功能：
+    磁盘格式化
+    磁盘分区
+    安装OS( Bootloaders, OS)
+    固件升级
+    raid配置
+1. 与conductor的交互
+IPA使用lookup和hearteat机制与Ironic Conductor进行交互
+启动时agent给Conductor的vendor_passthru lookup endpoint（地址为/v1/drivers/{driver}/vendor_passthru/lookup）发送一个硬件的profile
+然后Ironic就可以得出该节点的uuid，在成功发现该节点之后，
+agent隔N秒发送心跳包给Conductor（hearteat地址为/v1/nodes/{node_ident}/vendor_passthru/heartbeat ）
+conductor执行一系列动作，包括查询已经运行的命令的状态，
+
+2. 与ramdisk、agent的关系
+IPA是一个运行在ramdisk中python程序，当物理机注册时使用agent为前缀的驱动时，则会使用agent方式部署，即允许包含有IPA的ramdisk。
+3. 硬件管理
+硬件管理器（HardwareManager）是IPA中的一个概念，IPA通过重写硬件管理器来支持多种硬件平台。
+通过自定义 hardware managers 可以允许用户引入特定的硬件工具集、文件和清除步骤等等，
+比如可以引入 BIOS flashing utility and BIOS file，然后在cleaning step中重写BIOS版本。
+修改硬件的方法按照优先顺序发送给每个管理器，管理器检查是否包含该方法，
+如果没有则抛出IncompatibleHardwareMethodError异常，IPA继续发送给下一个管理器，
+直到某个管理器包含该方法并且返回方法的结果，如果所有的管理器都没有改方法则抛出 HardwareManagerMethodNotFound异常
+==================
+ironic部署的时候，需要修改的配置文件
+配置ironic.conf文件
+/etc/ironic/ironic.conf文件配置解析
+对ironic.conf文件的配置信息
+ironic-api 和ironic-conductor services服务可以在相同的节点上，也可以在不同的节点上
+
+Configuring ironic-api service 配置ironic-api服务
+connection参数-------配置数据库的连接地址，填写上数据库所安装的ip地址
+transport_url参数----配置ironic-api service使用RabbitMQ message代理，如果该项值没有设置，我们转而求助与rpc_backend选项和驱动程序的具体配置。
+auth_strategy参数----认证的方法
+[keystone_authtoken]这个项，配置的是ironic-api服务在身份认证所有的一些凭证----不同的版本可能这个配置参数不同
+Configuring ironic-api behind mod_wsgi----ironic-api也是一个通过mod_wsgi组件，运行在apche后面的服务
+
+Configuring ironic-conductor service 配置ironic-conductor服务
+my_ip参数---------ironic-conductor服务所在主机的ip地址
+api_url参数-------配置 ironic-api service URL，替换ip的时候，用 ironic-api service的ip替换
+glance_host参数-----填写Image service的ip地址，从而conductor服务能够联系上它
+url参数-------用于连接neturon服务，neutron的endpoint
+
+其他的一些参数，需要根据环境进行特殊的添加和配置
+==============
+如果api和conductor服务在一个节点上，那么database中的connection参数，default中的transport_url参数配置一次即可，
+如果api和conductor服务在不同的节点上，那么这两个参数，在不同的节点上，都是需要配置的，并且这两个服务的配置参数相同
+=============
+ironic与openstack keystone的授权信息，需要在与iroinc关联的openstack的其他服务的配置文件中进行设置
+============
+Enabling drivers and hardware types
+使能驱动和硬件类型
+ironic是通过实际的驱动程序来对硬件进行管理的
+1和2都需要配置
+1、Enabling hardware types
+使能硬件类型
+在ironic-conductor服务的配置文件中通过使能enabled_hardware_types参数来使能硬件类型
+例如：
+enabled_hardware_types = ipmi,redfish
+
+2、Enabling hardware interfaces
+使能硬件接口
+硬件接口类型有如下几种：boot、console、deploy、inspect、management、network、power、raid、vendor
+boot-------在裸机节点上管理引导deploy ramdisk和user instances 
+console----管理对裸机节点的串行控制台的访问
+deploy------定义镜像如何传输到目标磁盘，分两种，iscsi和直接部署方式
+inspect-----实现从节点获取硬件信息。 可以通过带外（通过联系节点的BMC）或带内实现（通过启动节点上的ramdisk）实现。
+ 后一个实现被称为检查器，并使用一个名为ironic-inspector的单独服务
+management----提供额外的硬件管理操作，如获取或设置引导设备。 该接口通常是供应商特定的，其名称通常与硬件类型的名称相匹配（ipmitool是一个显着的例外）
+power-----在节点上运行电源动作。 与管理界面类似，它通常是供应商特定的，它的名称通常与硬件类型的名称匹配（ipmitool再次是一个例外）
+vendor-----是供应商扩展程序在API中公开的地方
+
+Enabling classic drivers
+通过在ironic-conductor服务的配置文件中，设置enabled_drivers参数项，来设置典型程序
+==============
+PXE 设置---前提是在运行ironic-conductor服务的节点上进行设置pxe
+1、创建tftp根目录，并且ironic-conductor用户可以对其进行写入
+sudo mkdir -p /tftpboot
+sudo chown -R ironic /tftpboot
+2、使用PXE引导映像安装tftp服务器和syslinux软件包
+sudo yum install tftp-server syslinux-tftpboot xinetd
+3、使用xinetd提供tftp服务器设置来服务/ tftpboot，创建或编辑/etc/xinetd.d/tftp如下
+service tftp
+{
+  protocol        = udp
+  port            = 69
+  socket_type     = dgram
+  wait            = yes
+  user            = root
+  server          = /usr/sbin/in.tftpd
+  server_args     = -v -v -v -v -v --map-file /tftpboot/map-file /tftpboot
+  disable         = no
+  # This is a workaround for Fedora, where TFTP will listen only on
+  # IPv6 endpoint, if IPv4 flag is not used.
+  flags           = IPv4
+}
+4、重启 the xinetd service
+sudo systemctl restart xinetd
+5、Copy the PXE image to /tftpboot 拷贝pxe镜像到tftpboot目录下
+sudo cp /usr/share/syslinux/pxelinux.0 /tftpboot
+6、如果需要通过PXE-netboot部署整个磁盘映像，请将chain.c32映像复制到/ tftpboot以支持它
+sudo cp /usr/share/syslinux/chain.c32 /tftpboot/
+7、如果syslinux版本大于4，我们还需要确保将库模块复制到/ tftpboot目录
+sudo cp /usr/lib/syslinux/modules/*/ldlinux.* /tftpboot
+8、在tftp启动目录（/ tftpboot）中创建一个映射文件
+echo 're ^(/tftpboot/) /tftpboot/\2' > /tftpboot/map-file
+echo 're ^/tftpboot/ /tftpboot/' >> /tftpboot/map-file
+echo 're ^(^/) /tftpboot/\1' >> /tftpboot/map-file
+echo 're ^([^/]) /tftpboot/\1' >> /tftpboot/map-file
+
+备注：
+在Fedora / RHEL上，syslinux-tftpboot软件包已经在/ tftpboot上安装了库模块和PXE映像。
+ 如果TFTP服务器配置为侦听不同的目录，则应将/ tftpboot的内容复制到配置的目录
+==========
+配置计算服务使用ironic服务
+Configure the Compute service to use the Bare Metal service
+在计算节点的配置文件/etc/nova/nova.conf中，设置ironic驱动
+This configuration file must be modified on the Compute service’s controller nodes and compute nodes
+这些配置信息，需要在计算服务的控制节点和计算节点上都修改
+1、Change these configuration options in the default section
+在默认的配置项中，更改这些配置参数
+compute_driver=ironic.IronicDriver
+firewall_driver=nova.virt.firewall.NoopFirewallDriver
+scheduler_host_manager=ironic_host_manager
+ram_allocation_ratio=1.0
+reserved_host_memory_mb=0
+scheduler_use_baremetal_filters=True
+scheduler_tracks_instance_changes=False
+scheduler_host_subset_size=9999999
+2、Change these configuration options in the ironic section.
+在nova.conf的配置文件中，设置ironic章节
+[ironic]
+# Ironic authentication type
+auth_type=password
+# Keystone API endpoint
+auth_url=http://IDENTITY_IP:35357/v3
+# Ironic keystone project name
+project_name=service
+# Ironic keystone admin name
+username=ironic
+# Ironic keystone admin password
+password=IRONIC_PASSWORD
+# Ironic keystone project domain
+# or set project_domain_id
+project_domain_name=Default
+# Ironic keystone user domain
+# or set user_domain_id
+user_domain_name=Default
+备注：
+    IRONIC_PASSWORD with the password you chose for the ironic user in the Identity Service
+    IRONIC_NODE with the hostname or IP address of the ironic-api node
+    IDENTITY_IP with the IP of the Identity server
+3、On the Compute service’s controller nodes, restart the nova-scheduler process:
+在控制节点上，重启调度服务
+sudo systemctl restart openstack-nova-scheduler
+4、On the Compute service’s compute nodes, restart the nova-compute process:
+在计算节点上，重启计算服务
+sudo systemctl restart openstack-nova-compute
+
+
+

@@ -1,0 +1,10 @@
+在创建 instance 时，Neutron 会为其分配一个 port，里面包含了 MAC 和 IP 地址信息。这些信息会同步更新到 dnsmasq 的 host 文件
+同时 nova-compute 会在虚机的xml文件中设置 虚机 的 MAC 地址。
+一切准备就绪，instance 获取 IP 的过程如下： 
+cirros-vm1 开机启动，发出 DHCPDISCOVER 广播，该广播消息在整个 flat_net 中都可以被收到。 
+广播到达 veth tap19a0ed3d-fe，然后传送给 veth pair 的另一端 ns-19a0ed3d-fe。dnsmasq 在它上面监听，dnsmasq 检查其 host 文件，
+发现有对应项，于是dnsmasq 以  DHCPOFFER 消息将 IP（172.16.1.103）、子网掩码（255.255.255.0）、地址租用期限等信息发送给 cirros-vm1。
+cirros-vm1 发送 DHCPREQUEST 消息确认接受此 DHCPOFFER。
+dnsmasq 发送确认消息 DHCPACK，整个过程结束。 
+这个过程我们可以在 dnsmasq 日志中查看。 dnsmasq 默认将日志记录到 /var/log/syslog
+

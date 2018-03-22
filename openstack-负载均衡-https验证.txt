@@ -1,0 +1,62 @@
+http://blog.csdn.net/jimmy609/article/details/18557955/
+openstack https验证
+1、创建负载均衡器pool-------------不支持高可用的负载均衡器
+neutron lb-pool-create --lb-method ROUND_ROBIN \
+--name mypool-ckf4879 --protocol HTTPS --subnet-id 83747f17-f688-4f7a-a711-e838484ff055 
+
+2、创建vip
+neutron lb-vip-create --name myvip-ckf4879 --protocol-port 80 \
+--protocol HTTPS --subnet-id 83747f17-f688-4f7a-a711-e838484ff055 --address 192.168.0.54 \
+f3588104-0855-45a7-b8d4-56cece2f3c1d 
+
+3、添加后端成员 1
+neutron lb-member-create --address 192.168.0.52 \
+--protocol-port 443  f3588104-0855-45a7-b8d4-56cece2f3c1d
+
+4、添加后端成员2 
+neutron lb-member-create --address 192.168.0.53 \
+--protocol-port 443  f3588104-0855-45a7-b8d4-56cece2f3c1d
+
+5、创建健康检查-----采用ping的方式
+neutron lb-healthmonitor-create --delay 3 --type PING \
+--max-retries 3 --timeout 3 
+
+6、健康检查和负载均衡器pool进行关联
+neutron lb-healthmonitor-associate c83125fb-bd4f-4f11-a3e5-b0b1b75477c1 f3588104-0855-45a7-b8d4-56cece2f3c1d
+
+7、创建后端成员1对应的实际虚机
+nova boot lb-test-host1 --flavor 1 --image f06bf8fc-55e5-42b4-81eb-008b04e4afcb \
+--nic net-id=ffd15fc9-3528-404c-945c-6e3ba40fc92d,v4-fixed-ip=192.168.0.52 \
+--availability-zone az01.cell01.ceshihuanjing:AZ01C03.PUB.CS
+
+8、创建后端成员2对应的实际虚机
+nova boot lb-test-host1 --flavor 1 --image f06bf8fc-55e5-42b4-81eb-008b04e4afcb \
+--nic net-id=ffd15fc9-3528-404c-945c-6e3ba40fc92d,v4-fixed-ip=192.168.0.52 \
+--availability-zone az01.cell01.ceshihuanjing:AZ01C03.PUB.CS
+
+9、在后端成员1上配置tomcat支持证书ssl
+
+
+10、在后端成员1上配置tomcat支持证书ssl
+
+
+11、创建测试的虚机
+nova boot lb-test-host1 --flavor 1 --image f06bf8fc-55e5-42b4-81eb-008b04e4afcb \
+--nic net-id=ffd15fc9-3528-404c-945c-6e3ba40fc92d,v4-fixed-ip=192.168.0.50 \
+--availability-zone az01.cell01.ceshihuanjing:AZ01C03.PUB.CS
+
+12、在测试虚机上通过vip访问后端成员
+for k in $( seq 1 10000 )
+do
+sleep 1
+curl https://192.168.0.54
+done
+
+后端成员的信息轮训呈现
+Welcome to 192.168.0.53
+Welcome to 192.168.0.52
+Welcome to 192.168.0.53
+Welcome to 192.168.0.52
+
+
+

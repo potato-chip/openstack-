@@ -1,0 +1,28 @@
+1、resize命令行的用法
+[root@RGCC01 ~(keystone_admin)]$ nova help resize
+usage: nova resize [--poll] <server> <flavor>
+Resize a server.
+Positional arguments:
+  <server>  Name or ID of server.
+  <flavor>  Name or ID of new flavor
+  
+2、resize的过程
+1)检查VM虚拟磁盘格式是否为qcow2，如果是的话，将磁盘格式转换为RAW
+qemu-img convert -f qcow2 -O raw  
+ 
+2)将虚拟磁盘从HOST A scp到HOST B上
+3)用以下命令对虚拟磁盘大小进行重置
+    qemu-img resize  
+    e2fsck -fp  
+    resize2fs  
+4)如果use_cow_images设置为true，则将磁盘重新转为qcow2格式。
+5)重新获取网络配置，在HOST B上设置DHCP绑定和Iptables规则。
+6)修改XML文件，重新启动虚拟机
+
+3、resize的不同情况
+在一个单节点中进行resize
+同一机器中进行resize需要在配置文件nova.conf中添加：
+--allow_resize_to_same_host=True
+重启服务：
+service nova-api restart
+service nova-compute restart

@@ -1,0 +1,83 @@
+
+openstack底层健康检查测试用例，沃云的负载均衡是用v1版本
+1、创建负载均衡器pool-------------不支持高可用的负载均衡器
+neutron lb-pool-create --lb-method ROUND_ROBIN \
+--name mypool-ckf4879 --protocol HTTP --subnet-id 83747f17-f688-4f7a-a711-e838484ff055 
+
+2、创建vip
+neutron lb-vip-create --name myvip-ckf4879 --protocol-port 80 \
+--protocol HTTP --subnet-id 83747f17-f688-4f7a-a711-e838484ff055 --address 192.168.0.54 \
+f3588104-0855-45a7-b8d4-56cece2f3c1d 
+
+3、添加后端成员 1
+neutron lb-member-create --address 192.168.0.52 \
+--protocol-port 80  f3588104-0855-45a7-b8d4-56cece2f3c1d
+
+4、添加后端成员2 
+neutron lb-member-create --address 192.168.0.53 \
+--protocol-port 80  f3588104-0855-45a7-b8d4-56cece2f3c1d
+
+5、创建健康检查-----采用ping的方式
+neutron lb-healthmonitor-create --delay 3 --type PING \
+--max-retries 3 --timeout 3 
+
+6、健康检查和负载均衡器pool进行关联
+neutron lb-healthmonitor-associate c83125fb-bd4f-4f11-a3e5-b0b1b75477c1 f3588104-0855-45a7-b8d4-56cece2f3c1d
+
+7、创建后端成员1对应的实际虚机
+nova boot lb-test-host1 --flavor 1 --image f06bf8fc-55e5-42b4-81eb-008b04e4afcb \
+--nic net-id=ffd15fc9-3528-404c-945c-6e3ba40fc92d,v4-fixed-ip=192.168.0.52 \
+--availability-zone az01.cell01.ceshihuanjing:AZ01C03.PUB.CS
+
+8、创建后端成员2对应的实际虚机
+nova boot lb-test-host1 --flavor 1 --image f06bf8fc-55e5-42b4-81eb-008b04e4afcb \
+--nic net-id=ffd15fc9-3528-404c-945c-6e3ba40fc92d,v4-fixed-ip=192.168.0.52 \
+--availability-zone az01.cell01.ceshihuanjing:AZ01C03.PUB.CS
+
+9、在后端成员1上模拟web服务
+while true;
+do echo -e "HTTP/1.0 200 OK\r\n\r\nWelcome to 192.168.0.52" | sudo nc -l -p 80 ; 
+done&
+
+10、在后端成员2上模拟web服务
+while true;
+do echo -e "HTTP/1.0 200 OK\r\n\r\nWelcome to 192.168.0.53" | sudo nc -l -p 80 ; 
+done
+
+11、创建测试的虚机
+nova boot lb-test-host1 --flavor 1 --image f06bf8fc-55e5-42b4-81eb-008b04e4afcb \
+--nic net-id=ffd15fc9-3528-404c-945c-6e3ba40fc92d,v4-fixed-ip=192.168.0.50 \
+--availability-zone az01.cell01.ceshihuanjing:AZ01C03.PUB.CS
+
+12、在测试虚机上通过vip访问后端成员
+for k in $( seq 1 10000 )
+do
+sleep 1
+curl http://192.168.0.54
+done
+
+后端成员的信息轮训呈现
+Welcome to 192.168.0.53
+Welcome to 192.168.0.52
+Welcome to 192.168.0.53
+Welcome to 192.168.0.52
+
+13、在测试虚机访问过程中，关闭后端成员1
+类似后端成员异常，健康检查排除异常的成员，只呈现出可用的后端成员2信息
+Welcome to 192.168.0.53
+Welcome to 192.168.0.53
+Welcome to 192.168.0.53
+Welcome to 192.168.0.53
+Welcome to 192.168.0.53
+Welcome to 192.168.0.53
+
+14、重启后端成员2，
+健康检查，检测到成员正常，加入到pool里面，对外提供服务，后端成员又开始轮训出现
+Welcome to 192.168.0.53
+Welcome to 192.168.0.52
+Welcome to 192.168.0.53
+Welcome to 192.168.0.52
+Welcome to 192.168.0.53
+Welcome to 192.168.0.52
+Welcome to 192.168.0.53
+

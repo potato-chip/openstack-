@@ -1,0 +1,210 @@
+openstack的网络通信过程及命令
+虚拟机的DHCP请求——openstack可以自动为虚拟机配置IP。通过openstack neutron控制的DHCP服务完成。
+我们来了解这个服务如何运行，DHCP请求和回应是什么样子的？
+
+openstack的网络仅供创建该网络的租户使用。当然如果这个网络是“shared”，它也可以被其他所有租户使用。一个网络可以有多个subnets
+-------沃云门户上，一个subnet对应一个net
+
+neutron net-create net1 创建网络
+neutron subnet-create net1 10.10.10.0/24  创建subnet
+ip netns exec qdhcp-5f833617-6179-4797-b7c0-7d420d84040c ip addr  查看dhcp命名空间上的ip地址信息
+
+
+通过ethtool命令查看veth pairs的两端,如ethtool -S int-br-eth2 
+ 命令描述：
+ethtool -S int-br-eth2 -----这是端口
+NIC statistics: 
+     peer_ifindex: 10
+#ip link ----查看链接的对端是什么
+. 
+. 
+10: phy-br-eth2:  mtu 1500 qdisc pfifo_fast state UP qlen 1000 	 
+
+ethtool 是用于查询及设置网卡参数的命令。
+使用概要：
+ethtool ethx       //查询ethx网口基本设置，其中 x 是对应网卡的编号，如eth0、eth1等等
+ethtool –h        //显示ethtool的命令帮助(help)
+ethtool –i ethX    //查询ethX网口的相关信息 
+ethtool –d ethX    //查询ethX网口注册性信息
+ethtool –r ethX    //重置ethX网口到自适应模式
+ethtool –S ethX    //查询ethX网口收发包统计
+ethtool –s ethX [speed 10|100|1000] [duplex half|full]  [autoneg on|off]        //设置网口速率10/100/1000M、设置网口半/全双工、设置网口是否自协商 
+
+subnet私网的地址，第一个地址是网管，第二、第三地址是分配给dhcp使用
+ovs-vsctl show 
+
+关于网络隔离
+Openstack支持创建多个隔离的网络，也可以使用多种机制完成网络间的彼此隔离。这些隔离机制包括 VLANs/VxLANs/GRE tunnels，
+这个在我们部署openstack环境时配置。本文中我们选择了VLANs。当使用VLAN标签作为隔离机制，
+Neutron会从预定义 好的VLAN池中选择一个VLAN标签，并分配给一个新创建的network。
+通过分配VLAN标签给network，Neutron允许在一个物理网卡 上创建多个隔离的网络。
+与其他的平台的最大的区别是，用户不需要负责管理VLAN如何分配给networks。
+Neutron会负责管理分配VLAN标 签，并负责回收。在我们的例子中，net1使用VLAN标签1000，
+这意味着连接到该网络的虚拟机，发出的包会被打上VLAN标签1000然后发送到物 理网络中。
+对namespace也是同样的，如果我们希望namespace连接到某个特定网络，
+我们需要确保这个namespace发出的/接收的包被 正确的打上了标签。
+如果从 OVS观察下，会发现VLAN1会被改为VLAN1000，当包进入eth2所在的虚拟机网络。反之亦然。
+
+查看网络包转化的命令行
+虚拟机网络的网络包在br-eth2上进行了VLAN标签的修改:
+ovs-ofctl dump-flows br-eth2 
+从网络接口到namespace我们看到VLAN标签的修改如下：
+ovs-ofctl dump-flows br-int 
+brctl show 查看网桥信息
+http://cloud.51cto.com/art/201412/458635.htm
+与虚拟机相连的Linux bridage主要用于基于Iptables的安全组设置。安全组用于对虚拟机的网络隔离进行增强，
+由于iptables不能用于OVS网桥，因此我们使用了Linux网桥。
+
+为了响应虚拟机的dhcp请求，Neutron使用了”dnsmasq“的Linux工具，这个工具是一个轻量的DNS、DHCP服务，
+DNSmasq是一个小巧且方便地用于配置DNS和DHCP的工具，适用于小型网络，它提供了DNS功能和可选择的DHCP功能。
+它服务那些只在本地适用的域名，这些域名是不会在全球的DNS服务器中出现的。
+DHCP服务器和DNS服务器结合，并且允许DHCP分配的地址能在DNS中正常解析，而这些DHCP分配的地址和相关命令可以配置到每台主机中
+
+DHCP服务在namespace中连接到了一个tap接口（“--interface=tap26c9b807-7c”），从hosts文件我们可以看到：
+    # cat  /var/lib/neutron/dhcp/5f833617-6179-4797-b7c0-7d420d84040c/host 
+    fa:16:3e:fe:c7:87,host-10-10-10-2.openstacklocal,10.10.10.2 
+DHCP服务命名空间，通过一个tap接口，连接上br-int上
+
+router其实也是一个额外的namespace
+neutron router-create my-router-----创建一个路由器
+将subnet 10.10.10.0/24添加到router：
+# neutron router-interface-add fce64ebe-47f0-4846-b3af-9cf764f1ff11 subnet=2d7a0a58-0674-439a-ad23-d6471aaae9bc 
+fce64ebe-47f0-4846-b3af-9cf764f1ff11---这是router id
+2d7a0a58-0674-439a-ad23-d6471aaae9bc----这是subnet id
+
+两个subnet通过namespace中的网络接口互相连通。在namespace中，Neutron将系统参数net.ipv4.ip_forward设置为1。命令查看如下
+    # ip netns exec qrouter-fce64ebe-47f0-4846-b3af-9cf764f1ff11 sysctl net.ipv4.ip_forward 
+    net.ipv4.ip_forward = 1 
+namespace中的系统参数net.ipv4.ip_forward被设置
+通过在namespace中设置系统参数net.ipv4.ip_forward为 1，从而允许路由生效
+
+单单通过neutron net-create 命令创建的network不会生成相应的dhcp命名空间的，只有在创建subnet子网绑定了一个network时，才会
+生成network相应的dhcp命名空间
+在router的命名空间中，也有一个端口，连接到ovs交换机上
+
+**************************************************
+这个内容，是openstack的官方内容，沃云环境不实用
+所谓“public network”，指openstack部署环境以外的网络。这个网络可以是datacenter中的另一个网络、internet、或者一个不被openstack控制的私有网络。
+
+与public network通信，我们需要在openstack中创建一个network并设置为public。
+这个network用于虚拟机与public network通信。虚拟机不能直接连接到这个新创建的属性为public的network，
+所有网络流量必须使用openstack创建的router 从private network路由到public network。
+在openstack中创建public network，我们只需要使用neutron net-create 命令，并将router:external设置为True。
+在连接公网iP的情况下，查看router namespace，可以发现iptables的NAT talbe
+命令行如下：
+ip netns exec qrouter-fce64ebe-47f0-4846-b3af-9cf764f1ff11 iptables-save 查看防火墙转化规则
+确认虚拟路由器上是否有默认路由，可以通过ip netns ip r命令查看
+*************************************************
+疑问：
+1、在沃云环境中，我创建一个网络以后，生成对应的dhcp命名空间在控制节点上生成还是计算节点上？
+通过调度机制在管理节点和计算节点上随机选择至少2台节点进行创建，从而实现相互备份、冗余
+
+2、怎么查看网络network生成的dhcp命令空间分配到哪些节点上了？
+[root@RGCC02 ~(keystone_admin)]# neutron -h | grep dhcp
+  dhcp-agent-list-hosting-net                     List DHCP agents hosting a network.
+  dhcp-agent-network-add                          Add a network to a DHCP agent.
+  dhcp-agent-network-remove                       Remove a network from a DHCP agent.
+  net-list-on-dhcp-agent                          List the networks on a DHCP agent.
+
+[root@RGCC02 ~(keystone_admin)]# neutron dhcp-agent-list-hosting-net fcb1a59e-defd-4ec9-995e-0de8fe8a9f7b(这个uuid是network的uuid值)
+查看network对应的dhcp命名空间分配到哪些节点上
++--------------------------------------+-----------------------------------+----------------+-------+
+| id                                   | host                              | admin_state_up | alive |
++--------------------------------------+-----------------------------------+----------------+-------+
+| 1571458b-e9a3-475f-8cbe-a14081b373aa | HOST04.CELL02.AZ03.DEV02.LangFang | True           | :-)   |
+| 1caaa909-7bde-42b8-9735-d3a8ba44a509 | HOST02.CELL01.AZ02.DEV02.LangFang | True           | :-)   |
++--------------------------------------+-----------------------------------+----------------+-------+
+
+
+3、网络和生成的对应dhcp命名空间之间的关系是什么？
+ neutron net-create net1 ----生成network命令
+ admin_state_up            | True                                 | 
+ 
+| id                        | 5f833617-6179-4797-b7c0-7d420d84040c | 
+ 
+| name                      | net1            
+ip netns list -----------查看节点上的dhcp命名空间
+ 
+qdhcp-5f833617-6179-4797-b7c0-7d420d84040c 
+
+这两者之间的关系是network uuid的第二和第三字节 和对应的dhcp 命名空间的名字第二和第三 字节是相同的
+
+4、如何查找网络对应的dhcp命名空间？
+先查找到网络的dhcp命令空间在哪些节点上
+[root@RGCC02 ~(keystone_admin)]# neutron dhcp-agent-list-hosting-net fcb1a59e-defd-4ec9-995e-0de8fe8a9f7b
++--------------------------------------+-----------------------------------+----------------+-------+
+| id                                   | host                              | admin_state_up | alive |
++--------------------------------------+-----------------------------------+----------------+-------+
+| 1571458b-e9a3-475f-8cbe-a14081b373aa | HOST04.CELL02.AZ03.DEV02.LangFang | True           | :-)   |
+| 1caaa909-7bde-42b8-9735-d3a8ba44a509 | HOST02.CELL01.AZ02.DEV02.LangFang | True           | :-)   |
++--------------------------------------+-----------------------------------+----------------+-------+
+
+登录到这个节点上，通过关键字查看这个DHCP代理节点上对应网络dhcp命名空间
+[root@HOST04 ~]# ip netns | grep defd-4ec9
+qdhcp-fcb1a59e-defd-4ec9-995e-0de8fe8a9f7b
+
+查看dhcp命名空间上都有哪些sunnet信息
+[root@RGCC02 ~(keystone_admin)]# neutron net-list-on-dhcp-agent 1571458b-e9a3-475f-8cbe-a14081b373aa
++--------------------------------------+-------------------------+-------------------------------------------------------+
+| id                                   | name                    | subnets                                               |
++--------------------------------------+-------------------------+-------------------------------------------------------+
+| 0d4fafb9-d011-4e11-af33-5be19958c412 | grth_69935002           | 46e4e7bb-0e85-48b4-b63e-26f10c57c772 10.0.0.0/8       |
+| 1c965627-1b23-40bc-88cf-be1b8317e928 | mmm_169984853           | 1a677830-5aa3-4161-a8db-ce8a9782fe4a 10.0.0.0/8       |
+| 1e228f8c-96e4-4dea-8b1f-e2a81801701e | nic_test_169989705      | 36815924-8f5e-4c24-9086-4f00de4bf9c1 192.168.0.0/16   |
+========================
+ip namespace命令空间相关知识点
+在网络命名空间执行的命令行与平常执行的命令行是一样的，只是在执行的时候，前提加了一个网络命名空间
+netns是在Linux中提供网络虚拟化的一个项目，使用netns网络空间虚拟化可以在本地虚拟化出多个网络环境
+使用netns创建的网络空间独立于当前系统的网络空间，其中的网络设备以及iptables规则等都是独立的，就好像进入了另外一个网络一样。
+netns虚拟网络空间的网络通信依赖于物理接口
+创建虚拟网络空间
+ip netns add ns1
+得到了一个名为ns1的网络空间，虚拟网络空间除了网络是虚的以外，文件系统完全和当前系统共享，也就是说所有本地可以使用的命令都可以在虚拟网络中使用
+ip link add name ns1-nic type veth peer name ns1-vnic
+这里我们添加了一对veth设备，veth设备是成对出现的，两个设备之间的数据是相互贯通的，我们把ns1-vnic加入到ns1网络空间中：
+ip link set ns1-vnic netns ns1
+这样ns1-vnic就进入到ns1空间了，在本地网络中已经无法查看到
+
+ip link set ns1-vnic name eth0 在命名空间中修改网卡的名字
+ip addr add 10.0.0.100/24 dev eth0 为添加的网卡添加私有ip地址
+ip link set eth0 up 启动这个网卡
+ip link set lo up 把回环启动，可以ping通自己
+
+往namespace中新加一个设备
+ip link set  [dev-name]   netns  [name](网络命名空间的名字)
+启用这个设备
+ip netns exec   [name](网络命名空间的名字)  ip link set [dev-name] up
+
+显示所有的虚拟网络命名空间
+ip netns list
+也可通过查看/var/run/netns目录下的文件来list
+======================
+linux常用命令行
+配置ip地址
+vi /etc/sysconfig/network-scripts/ifcfg-eth0
+重新启动服务
+service network restart
+======================
+neutron ext-list client命令检查是否启用了哪些扩展
+====================
+DHCP知识点
+neutron server对应的neutron.conf文件里面
+Neutron 配置文件 /etc/neutron/neutron.conf:
+这个参数用于配置一个网络对应几个dhcp服务，从而实现高可用
+# Number of DHCP agents scheduled to host a network. This enables redundant
+# DHCP agents for configured networks.
+# dhcp_agents_per_network = 1
+dhcp_agents_per_network = 2
+
+默认开启DHCP高可用性
+可以通过在文件/etc/neutron/neutron.conf中设置以下配置选项来控制分配给网络的DHCP代理的默认数量。
+dhcp_agents_per_network = 3
+===================
+neutron  dhcp-agent-list-hosting-net network-uuid 查询出我这个网络关联的dhcp代理，分布在哪些主机上
+neutron  net-list-on-dhcp-agent dhcp-agent-uuid 查询出我的dhcp-agent代理，都关联了哪些网络，这里面输出的格式是网络名字和subnet的对应关系，
+如果实际登录到dhcp agent代理所在的物理主机上，那么你可以看到有相应个数的dhcp命令空间
+单个网络可以分配给多个DHCP代理，一个DHCP代理可以承载多个网络（代理可以变相理解为一个负责具体事务的管理进程）
+dhcp服务只用在创建完subnet的时候，才真正的启动这个服务，只是创建network是不创建dhcp命令空间的
+因为DHCP代理仅在存在DHCP时启动dnsmasq服务。
+
+

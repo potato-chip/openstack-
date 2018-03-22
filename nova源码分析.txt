@@ -1,0 +1,15 @@
+对openstack oslo库的介绍
+http://blog.csdn.net/canxinghen/article/details/51711457
+
+*args 对可变的位置参数进行接受，传入的参数为以元组形式存在args中
+**kwargs对关键字参数进行接受，传入的参数为以字典形式存在kwargs中
+
+编码转换时，通常需要以unicode作为中间编码，即先将其他编码的字符串解码（decode）成unicode，再从unicode编码（encode）成另一种编码
+
+工具库 oslo.utils
+oslo_utils.encodeutils.safe_decode(text, incoming=None, errors='strict') 	其他编码转unicode
+oslo_utils.encodeutils.safe_encode(text, incoming=None, encoding='utf-8', errors='strict') 	unicode转其他编码，默认utf-8
+oslo_utils.importutils.import_class(import_str) 	动态导入一个python类
+==============
+在使用命令行的时候，如果想输出命令执行过程中的一些信息，可以输入--debug参数，这个参数，
+是必须紧跟在一级命令的后面才有效，例如nova --debug flavor-list

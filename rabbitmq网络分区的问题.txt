@@ -1,0 +1,26 @@
+网络设备故障导致的网络分裂。比如，存在A\B\C\D\E五个节点，A\B处于同一子网，E\C\D处于另外一子网，中间通过交换机相连。
+若两个子网间的交换机故障了即发生了网络分区，A\B和C\D\E便不能通讯。
+RabbitMQ cluster不能很好地处理Network Partition。RabbitMQ将queue、exchange、bindings等信息存储在Erlang的
+分布式数据库Mnesia中。所以出现Network partition时RabbitMQ的众多行为与Mnesia的行为密切相关。
+
+Network Partition的检测
+若某一node在一段时间内（取决于net_ticktime的设置）不能与另一node取得联系，则Mnesia认为未能与之取得联系的node宕掉了。
+若两个node彼此恢复联系了，但都曾以为对方宕掉了，则Manesia断定发生过Network partition。
+
+发生Network Partition后RabbitMQ的行为
+若发生了network partition，cluster中的双方（或多方）将独立存在，每一方都将认为其他方已经崩溃了。
+Queues、bindings、exchanges可以各自独立的创建、删除。对于Mirrored queues，处于不同network partition的每一方都会拥有各自的master，
+且各自独立的读写。（也可能发生其他诡异的行为）。若network partition恢复了，cluster的状态并不能自动恢复到network partition发生前的状态，
+直至采取措施进行修复。
+
+由suspend/resume引起的 partitions
+只要cluster中的不同node自身没有失效但之间的通信发生了中断都可认为是发生了Partitions。
+比如，整个OS的挂起会导致其中的cluster nodes的挂起，但这些nodes却不认为自身失效或停止了，
+而cluster中的其它nodes不能与之取得联系，会认为这些nodes down掉了。
+举个例子：若cluster中的一个node运行在笔记本电脑上，合上电脑屏幕就有可能导致node挂起。
+另外，若cluster中的node运行在虚拟机中，则管理程序可能导致虚拟机挂起，从而使node挂起。
+
+如何从network partition中恢复
+首先选一个最信任的partition，Mnesia使用该partition中的状态，其他partitions中发生的变化都将丢失。
+停止其他partitions中的所有nodes，之后重启这些nodes。当这些nodes重新加入cluster后将从信任的partition恢复状态。
+最后还需重启信任的partition中的所有nodes以清除network partition的警告信息

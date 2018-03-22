@@ -1,0 +1,162 @@
+
+块存储快照
+块存储的着重点是记录某个时间点卷的状态，特点是创建速度快。cinder-volume服务中实现了基于多种存储驱动的块存储备份，
+在打快照前，卷需要是available状态（即不能被挂载），并且快照对卷具有强依赖性。所以一旦卷打了快照，
+便不能直接被删除，需要先删除该卷关联的所有快照。对于卷快照的使用，可以基于卷快照生成一个新的卷，
+所以卷快照在实际生产中用来恢复到某个时间的状态，不过一旦快照关联的卷出现故障坏掉，卷快照也是不可用的
+
+块存储快照常用命令行
+cinder snapshot-list-----获取块快照
+cinder snapshot-create----创建快照
+cinder snapshot-create --display-name snap-aaa2 --display-description Test 410ebd08-dd17-470b-b08
+cinder create --snapshot-id----从块快照创建一个卷,这里面有一个坑，就是通过卷的快照创建卷时，一定要注意快照关联的原卷的大小，
+新创建的卷大小必须大于等于原有卷大小
+cinder create --snapshot-id=6c7b83f1-ca14-4d2d-a29b-90b112eed128 --display-name=ckf4879-0710-form-snap 100
+
+块存储备份----沃云环境里面暂时没有备份功能
+块存储备份的着重点是备份卷的数据，所以创建的时间较长。cinder-backup服务中目前（stable/liberty）
+实现了ceph/glusterfs/nfs/posix/Swift/IBM TSM六种存储系统卷备份，备份前，卷需要是available状态（即不能被挂载），
+备份一旦完成，对卷就不具有依赖性。所以即使备份相关的卷出现故障，还是可以恢复备份中数据。
+操作方法是创建一个新的空白卷，将备份restore到这个空白卷即可
+=========================
+查看cinder的服务
+cinder service-list ------查看cinder运行了哪些服务
+Cinder为每一个backend运行一个cinder-volume服务
+通过在cinder.conf中设置 storage_availability_zone=az1 可以指定cinder-volume host的Zone。
+用户创建volume的时候可以选择AZ，配合cinder-scheduler的AvailabilityZoneFilter可以将volume创建到指定的AZ中。
+默认的情况下Zone为nova。
+（记住这个cinder.conf文件一定会在cinder-volume服务所在的节点上进行配置，这个cinder-volume服务所在的节点，才是真正的提供
+ 存储管理的节点）
+ 通过在cinder.conf中的backend配置部分设置 iscsi_ip_address = 10.0.1.29 可以指定iSCSI session使用的网卡，从而做到数据网络和管理网络的分离。
+搭建多节点的存储环境，一定要注意各节点之间使用NTP进行时间同步，否则可能出现cinder-volume没有任何错误，但是其状态为down的情况。
+ ====================
+Cinder概述
+它是一个资源管理系统，负责向虚机提供持久块存储系统
+它把不通的后端存储进行封装，向外提供统一的api
+它不是新开发的块设备存储系统，而是使用插件的方式，结合不同后端存储
+的驱动提供块存储服务。主要核心是对卷的管理，允许对卷，卷的类型、卷的快照进行管理
+==================
+cinder的内部架构
+    三个主要组成部分
+        –cinder-api 组件负责向外提供Cinder REST API
+        –cinder-scheduler 组件负责分配存储资源
+        –cinder-volume 组件负责封装driver，不同的driver负责控制不同的后端存储
+    组件之间的RPC靠消息队列（Queue）实现
+    Cinder的开发工作主要集中在scheduler和driver，以便提供更多的调度算法、更多的功能、以及指出更多的后端存储
+    Volume元数据和状态保存在Database中
+=====================
+常用操作
+tranfer volume：将volume 的拥有权从一个tenant中的用户转移到另一个tenant中的用户
+两步走
+1、在volume所在tenant的用户使用命令 cinder transfer-create 产生tranfer的时候会产生transfer id 和 authkey
+2、在另一个tenant中的用户使用命令cinder transfer-accept 接受transfer的时候，需要输入transfer id 和 auth_key
+=====================
+Cinder支持配置多个后端，配置多后端之后，openstack会为每个后端启动一个cinder-volume服务
+每个后端在配置文件中用一个配置组来表示，每个后端都有一个名字（如：volume_backend_name = sas），
+当然后端名字并不需要保证唯一，在这种情况下，调度器使用容量过滤器来选则最合适的后端；
+也可以创建一个卷类型与后端名字关联，创建卷时调度器将根据用户指定的卷类型选择一个合适的后端来处理请求
+
+配置多后端
+要启用cinder多后端，必须配置/etc/cinder/cinder.conf文件中的enable_backends选项，
+它定义了一个用逗号分隔的配置组列表，每个配置组与一个后端关联。每个配置组包含一组选项，用以配置该后端的属性
+例子：
+enable_backends =sata,sas,ssd
+[sata]
+volume_group=cinder-volumes-1
+volume_driver=cinder.volume.drivers.lvm.LVMISCSIDriver
+volume_backend_name=sata
+
+[sas]
+volume_group=cinder-volumes-2
+volume_driver=cinder.volume.drivers.lvm.LVMISCSIDriver
+volume_backend_name=sas
+
+[ssd]
+volume_group=cinder-volumes-3
+volume_driver=cinder.volume.drivers.lvm.LVMISCSIDriver
+volume_backend_name=ssd
+注意配置组名和后端名（volume_backend_name）没有关联，你可以取任何合法的字符串作为配置组名和后端名，而不用保持二者一致。
+======================
+在volume service所在的节点上进行配置
+enabled_backends=zbsiscsi-std------使用哪些存储后端
+[zbsiscsi-std]------对相应存储后端的一些配置信息
+volume_backend_name=zbs_std----------------这个参数只是给卷后端起了一个名字，卷的类型可以与这个后端的名字进行关联，从而用于过滤
+volume_driver=cinder.volume.drivers.zbsiscsi.zbsiscsi.ZBSISCSIDriver-----用来指定后端所使用的块设备驱动，Cinder支持多种存储后端
+zbs_config=/etc/zbs/zbs_std.conf
+chunk_ip=10.32.0.168
+=======================
+设置卷类型
+可以为每个后端关联一个卷类型，创建卷的时候，调度器就能根据卷类型选择合适的后端来处理请求
+例子
+创建一个名为sata的卷类型并与名为sata的后端关联
+cinder type-create sata
+cinder type-key sata set volume_backend_name=sata
+
+[root@CE01 cinder(keystone_admin)]$ cinder help type-key
+usage: cinder type-key <vtype> <action> [<key=value> [<key=value> ...]]
+Sets or unsets extra_spec for a volume type.
+Positional arguments:
+  <vtype>      Name or ID of volume type.
+  <action>     The action. Valid values are 'set' or 'unset.'
+  <key=value>  The extra specs key and value pair to set or unset. For unset,
+               specify only the key. Default=None.
+如果volume_backend_name指定的后端不存在，在创建卷的时候，过滤调度器将返回无法找到合适的后端的错误
+===================
+创建卷
+完成后端与卷类型的关联后，就可以创建卷了。当然也可以不指定卷类型，调度器将使用默认的卷类型（由default_volume_type指定）
+cinder create-volume --volume-type sata --display_name sata1 10 
+====================
+在cinder里面创建一个新的az
+在service cinder-volume服务所在的节点上，执行下列命令
+echo "storage_availability_zone=new-zone-name" >> /etc/cinder/cinder.conf，一定添加到[DEFAULT]段
+重启服务service cinder-volume restart
+检测是否生效 cinder availability-zone-list
+storage_availability_zone = nova 	(StrOpt) Availability zone of this node
+default_availability_zone = None 	(StrOpt) Default availability zone for new volumes. If not set, 
+the storage_availability_zone option value is used as the default for new volumes.
+===================
+storage_availability_zone这个代表的是后端存储节点属于哪个az，个人理解这个AZ与nova 里面的az不是一个概念，这两个没有什么联系
+在对存储进行配置的时候，可以采用两种方式
+方式一、多storage_availability_zone单backend形式，具体配置形式是不同的后端存储对应到不同的cinder-volume主机上，
+利用storage_availability_zone 的区分，这种形式就是我有多个cinder-volume服务节点，每一种这样的节点管理一种存储类型，并且在其对应
+cinder.conf文件中，配置storage_availability_zone参数，起不同的名字
+方式二、单storage_availability_zone多backend形式，具体配置形式是不同的后端存储只需对应到单一的cinder-volume主机上，
+这种形式就是我多个存储类型的配置，在统一的一个cinder-volume服务的主机上配置，不同的存储类型，在cinder.conf文件上，对应
+不同的配置组，但是使用这种方式的话，需要你与volume-type卷类型配合使用，不同的卷类型对应不同的后端存储
+创建卷的命令行
+cinder help create
+Positional arguments:
+  <size>                Volume size, in GBs.
+
+Optional arguments:
+  --snapshot-id <snapshot-id>
+                        Creates volume from snapshot ID. Default=None.
+  --source-volid <source-volid>
+                        Creates volume from volume ID. Default=None.
+  --image-id <image-id>
+                        Creates volume from image ID. Default=None.
+  --display-name <display-name>
+                        Volume name. Default=None.
+  --display-description <display-description>
+                        Volume description. Default=None.
+  --volume-type <volume-type>---------------------------------------不同的卷类型进行选择，对方式二
+                        Volume type. Default=None.
+  --availability-zone <availability-zone>---------------------------不同的存储az进行选择，对方式一
+                        Availability zone for volume. Default=None.
+  --volid VOLID         id of volume.
+  --multiattach <True|False>
+                        create multiattach volume Default=False.
+  --metadata [<key=value> [<key=value> ...]]
+                        Metadata key and value pairs. Default=None.
+
+Host Filtering 算法
+默认的filter包括 AvailabilityZoneFilter,CapacityFilter,CapabilitiesFilter。其中：
+    AvailabilityZoneFilter会判断cinder host的availability zone是不是与目的az相同。不同则被过滤掉。
+    CapacityFilter会判断host上的剩余空间 free_capacity_gb 大小，确保free_capacity_gb 大于volume 的大小。不够则被过滤掉。
+    CapabilitiesFilter会检查host的属性是否和volume type中的extra specs是否完全一致。不一致则被国旅掉。
+
+经过以上Filter的过滤，cinder-scheduler会得到符合条件的host列表，然后进入weighting环节，根据weighting算法选出最优的host。
+得到空列表则报No valid host was found错误。
+cinder.conf中，scheduler_default_filters不设置的话，cinder-scheduler默认会使用这三个filter
+====================
+glusterfs的简单介绍

@@ -1,0 +1,3144 @@
+工作中常用的openstack命令行
+1、以管理员的身份进入openstack环境-------这个在管理节点上使用就可以，计算节点上是不用使用的，计算节点上重启服务，直接输入命令行就可以
+source keystonerc_admin 
+2、查询部署的openstack环境下面有多少个物理主机
+ nova host-list
+3、查看用户列表
+ keystone user-list
+4、清理过期的token
+keystone-manage token_flush
+5、查询包含flavor的命令行
+ nova help | grep flavor  
+6、创建自定义 flavor
+nova flavor-create m1.vcomputer 6 2048 20 1 
+linux是20G，windows是50G，内存1G即可，
+7、查询一下 tenant ID
+ keystone tenant-list ，当搭建起来 ，openstack环境，会有三个租户信息，
+admin,demo,service, 三个租户
+8、需要把flavor分配到对应的 租户里面，因为，我租户想要知道自己的flaovr
+ nova flavor-access-add 6 9467f30b8bba4770a06a687e4584636b  ,按照参数顺序，flavor的编号，租户的id值
+9、需要把镜像上传注册到openstack环境中
+命令行如下
+glance image-create --name "CENT_6.5_S_64_X_20_X.qcow2" --file /var/lib/glance/images/img/CENT_6.5_S_64_X_20_X.qcow2 --disk-format qcow2 --container-format bare --is-public True --progress
+
+10、确认虚拟机已成功创建并启动
+nova list
+11、停止虚拟机
+nova stop [vm-name]
+12、暂停虚拟机
+nova suspend [vm-name]
+13、 循环启动openstack的服务，可以在控制台上输入如下命令行：
+for SVC in api network cert console scheduler computer;do service openstack-nova-$SVC start;done 这是shell脚本里面的for循环
+14、grep -i error /var/log/nova 检查日志里面是否有错误
+15、nova secgroup-list 查看安全组
+16、、tail -f filename
+说明：监视filename文件的尾部内容（默认10行，相当于增加参数 -n 10），刷新显示在屏幕上。退出，按下CTRL+C。
+17 、查看某一租户下面所有的虚机
+nova list --all | grep 99386450d0a949ebaf2ec515845e9dea
+18、获取主机的远程连接位置，这个位置是在浏览器里面输入的，可以远程登录到虚机上------虚机登录只能通过VNC方式登录上去，没有其他的登录方式，
+虚机重启以后，VNC的端口会改变，这时候，你需要重新执行下面的命令，得到VNC地址。一个虚机对应一个唯一不变的端口
+ nova get-vnc-console 21800504-9937-47ba-8bdd-23a0ae7aa005 novnc
++-------+---------------------------------------------------------------------------------+
+| Type  | Url                                                                             |
++-------+---------------------------------------------------------------------------------+
+| novnc | http://172.20.2.1:6080/vnc_auto.html?token=53f889e5-987d-4112-aa6f-f02eff01b8ef |
++-------+---------------------------------------------------------------------------------+
+19、显示虚机的详细信息
+nova show c219c7da-b1fa-4e89-a2af-0d84af64cec9
+20、获取主机的密码
+1、进入数据库
+2、use miner;
+3、select * from instances where id='21800504-9937-47ba-8bdd-23a0ae7aa005';查看虚机的表项内容
+
+==============
+keystone相应的命令行
+
+用户表示拥有用户名，密码，邮箱等帐号信息的自然人
+查看用户列表
+keystone user-list
+创建用户
+keystone user-create --name=hui --pass=password --email=hui@example.com
+keystone user-create  --name <user-name>  [--tenant-id <tenant-id>]
+                           [--pass <pass>] [--email <email>]
+                           [--enabled <true|false>]
+
+
+显示用户详细信息
+keystone user-get <user-id>
+删除用户
+keystone user-delete 用户名
+更新用户的密码
+keystone user-password-update [--pass <password>] <user>
+赋予用户一个角色
+keystone user-role-add --user <user> --role <role> [--tenant <tenant>]
+查看用户的角色
+keystone user-role-list
+删除用户的一个角色
+keystone user-role-remove --user <user> --role <role> [--tenant <tenant>]
+更新用户信息
+keystone user-update [--name <user-name>] [--email <email>]
+                            [--enabled <true|false>]
+                            <user>
+
+租户（tenant）
+租户可以理解为一个项目，团队或组织。你必须指定一个相应的租户(tenant)才可以申请OpenStack服务，
+例如你指定以某租户申请Compute服务来查询当前运行的实例列表，则你将收到的是该租户的运行实例列表，而无法看到其它租户的运行实例列表
+是这样的逻辑（你只有参加了某一个组织，成为组织的一员，才可以使用这个组织的资源，而组织中的每一个成员又分为白金会员、普通会员，这些等级，
+同时呢，申请资源是按照组织的形式来分配资源的。这分别对应openstack里面的租户、用户、角色，三个概念）
+
+创建租户
+keystone tenant-create --name <tenant-name>
+                              [--description <tenant-description>]
+                              [--enabled <true|false>]
+
+显示工程详细信息
+keystone tenant-get <tenant-id>
+更新工程信息
+keystone tenant-update [--name <tenant_name>]
+                              [--description <tenant-description>]
+                              [--enabled <true|false>]
+                              <tenant>
+角色（role）
+代表特定的租户中的用户操作权限，角色是可执行一特定系列操作的用户特性，角色规定了用户在某个租户中的一系列权利和特权
+一般默认有超级管理员权限admin和普通管理员权限member
+添加一个角色
+ keystone role-create --name <role-name>
+ 
+=====================
+nova 里面基本概念
+Availability Zones 
+AZ可以简单理解为一组节点的集合，这组节点具有独立的电力供应设备，比如一个个独立供电的机房，一个个独立供电的机架都可以被划分成AZ。
+所以，AZ主要是通过冗余来解决可用性问题。在亚马逊的声明中，instance不可用指的是用户所有AZ中的同一instances都不可达才表明不可用。 
+AZ之间共享所有的nova服务和keystone服务。另外，AZ是用户可见的一个概念，用户在创建instance的时候可以选择创建到哪些AZ中，以保证instance的可用性
+=======================
+21、glance 命令行上传 image
+制作一个系统镜像上传到/mnt/image目录下：
+$ glance image-create –name centos6.5 –disk-format=qcow2 –container-format=bare –is-public=True –file=/mnt/image/centos6.5.img
+解释：
+
+–name NAME 上传完镜像在openstack中显示的名称；
+
+–disk-format DISK_FORMAT 镜像格式；openstack支持的格式详情请看官方介绍；
+
+–container-format CONTAINER_FORMAT 图片的容器格式，可以是ami,ari,aki,ovf,bare默认是bare
+
+–owner TENANT_ID 那个租户可以使用此镜像
+
+–size SIZE 这个镜像的大小
+
+–min-disk DISK_GB 这个镜像启动最小需要的大小；
+
+–min-ram DISK_RAM 启动这个镜像需要的最小内存；
+
+–location IMAGE_URL 在web界面中可以使用url地址上传镜像，目前支持http协议的；
+
+–file FILE 镜像所在本地目录；
+
+–checksum CHECKSUM 镜像数据验证；
+
+–is-public [True|False] 是否共享此镜像；共享后其他用户也可以使用此镜像启动instance；
+
+==================================
+22、MYSQL  \G 用法：查询结果按列打印
+\G 放到sql语句后,可以使每个字段打印到单独的行，
+mysql> select * from user_msg limit 2 \G;
+===================================
+23、创建虚拟机网络常用命令行
+创建网络
+neutron net-create wangxg_net                           
+关于net的几个命令： 
+* net-create 
+ * net-delete 
+ * net-list 
+ * net-show 
+ * net-update 修改网络信息 
+在网络(wangxg_net)上创建一个子网(wangxg_subnet)
+neutron subnet-create wangxg_net 192.168.50.0/24 --name wangxg_subnet --dns-nameserver 10.19.8.10
+关于subnet的几个命令： 
+* subnet-create 
+ * subnet-delete 
+ * subnet-list 
+ * subnet-show 
+ * subnet-update 修改子网信息 
+ 
+ ==================
+（创建网络的目的，就是为了创建网卡（这句话， 待验证），不创建网卡的情况下，创建完虚机也可以用VNC进行登录,浮动ip地址就是私网ip地址，
+在创建网络的时候，可以不指定dns服务器，有时在镜像里面指定了这个功能）
+ 创建端口
+ 关于port的几个命令： 
+* port-create 
+ * port-delete 
+ * port-list 
+ * port-show 
+ * port-update 
+ * router-port-list 
+ 创建路由
+ 私有网络使用虚拟路由器连接到公共网络。每个路由器包含至少一个连接到私有项目网络和公共网络接口的网络接口。 
+①创建路由 
+neutron router-create wangxg_router
+②在路由器添加一个私网子网接口 
+neutron router-interface-add wangxg_router wangxg_subnet
+③在路由器设置公共网络的网关 
+neutron net-list | grep ext-net可以查看外部网ID为：5c9aadc3-ed0e-42a5-8ba5-71b5c957199c
+neutron router-gateway-set wangxg_router 5c9aadc3-ed0e-42a5-8ba5-71b5c957199c
+Set gateway for router wangxg_router1
+关于router的几个命令： 
+* router-create 
+ * router-delete 
+ * router-gateway-clear 
+ * router-gateway-set 
+ * router-interface-add 
+ * router-interface-delete 
+ * router-list 
+ * router-list-on-l3-agent 
+ * router-port-list 
+ * router-show 
+ * router-update
+ 
+ 4.创建VM后需要绑定浮动IP
+
+①查看可以使用的浮动ip。 
+neutron floatingip-list
+②将上一步的浮动ip列表中选一个与新建的VM实例关联。 
+
+关于floatingip的几个命令： 
+* floatingip-associate 
+ * floatingip-create 
+ * floatingip-delete 
+ * floatingip-disassociate 
+ * floatingip-list 
+ * floatingip-show
+ **************************
+创建虚机的步骤
+1、选择想要为其创建新 VM 实例的租户。(租户、用户）
+2、选择想要基于其创建新 VM 实例的映像。(镜像)
+3、选择想要基于其创建新 VM 实例的风格。(云主机类型) 
+4、为新 VM 实例选择要使用的网络。（需要router。并且要绑定interface、gateway） 
+5、创建实例。
+6、为新 VM 实例选择要使用的浮动 IP 地址。
+7、将浮动 IP 地址与新 VM 实例相关联。
+=========================
+24、virsh dumpxml instance-0000001c，virsh命令的XML 中的虚机域信息，这个输出的XML文件中，显示的信息，应该是openstack最终生成的XML格式信息（个人认为是这样的）
+
+========================
+实例解析创建虚拟机的步骤
+25、创建虚拟机的步骤
+(1).选择想要为其创建新 VM 实例的租户。(租户、用户) 
+您将需要在命令中指定租户名称或ID才能创建VM实例。
+之前创建过，可以使用命令keystone tenant-list得到。 
+此处使用：wangxg_tenant 其ID为：31897395af854c978a21f9afbe142976
+(2).选择想要基于其创建新 VM 实例的映像。(镜像) 
+您将需要在命令中指定映像名称或ID才能创建 VM 实例。。
+之前创建过，可以使用命令nova image-list或glance image-list得到。
+此处使用：wangxgimage_tempest_img_cirrors_alt （这是一个镜像）其ID为：c3fba305-66c8-4e43-948e-eb1e4fc47159
+注意：如果您部署的非全局区域VM实例的版本级别低于全局区域，则 VM 实例将自动在安装时升级到全局区域版本级别。
+如果尝试部署的非全局区域 VM 实例的版本级别高于全局区域，则操作会失败。
+(3).选择想要基于其创建新 VM 实例的风格。(云主机类型) 
+确保您具有包含所需规范的风格。将所需规范添加到风格或使用所需规范创建新的风格。 
+已经创建过，并且和租户：wangxg_tenant关联。可以使用nova flavor-list得到。此处使用：wangxg_flavor 其ID为：6eecabba-2f71-4d4f-852b-e9ea3019cce4
+(4)为新 VM 实例选择要使用的网络。（需要router。并且要绑定interface、gateway） 
+您将需要在命令中指定网络名称或 ID 才能创建 VM 实例。 
+已经创建过，也有和租户wangxg_tenant关联。可以使用neutron net-list获得。此处使用：wangxg_net 其ID为：e61560e1-74ed-40ad-bd19-82de05ff6237
+(5)创建实例。 
+使用 nova boot 命令创建和引导计算实例。imageID 来自第 2 步，flavorID 来自第 3 步，而 nicID 来自第 4 步
+nova boot --image c3fba305-66c8-4e43-948e-eb1e4fc47159 --flavor 6eecabba-2f71-4d4f-852b-e9ea3019cce4 --nic net-id=e61560e1-74ed-40ad-bd19-82de05ff6237 wangxg_instance1
+(使用nova list可查看VM列表)
+(6)为新 VM 实例选择要使用的浮动 IP 地址。 
+使用 neutron floatingip-list 命令显示第 1 步中所选租户的浮动 IP 地址。此处选择其中一个使用：10.89.152.229 其ID为：2c51425f-8a08-43a4-a3ca-e8d83118938c
+(7)将浮动 IP 地址与新 VM 实例相关联。 
+使用neutron floatingip-associate命令将第 6 步中的浮动 IP 地址与新 VM 实例相关联。（需要用到port）
+nova list可以查看租户内虚拟机的列表，其中的信息包括网络即内网IP（192.168.50.5）。
+使用nova floating-ip-associate 3ada1c76-8061-4aec-9de4-bfb584522d4f 10.89.152.229
+
+==================================
+26、获取虚拟机的VNC登录地址
+nova get-vnc-console  （0ab94ec4-ccc9-40f7-adce-e9877571e556）虚机的ID值 novnc
+
+27、在固定的计算节点上创建虚机
+nova boot --image 3aba514f-6676-41d0-957d-47d0fe8befe5 --flavor 1 --nic net-id=48491329-97c8-4d6e-8356-e41c908960e4 --availability-zone=az01.region.langfang:HCI001.CELL01.AZ01.DEV01.Langfang chenwei_instance1
+-availability-zone=az01.region.langfang:HCI001.CELL01.AZ01.DEV01.Langfang选项的值的内容是
+用命令行 nova  availability-zone-list来获取到AZ的值，比如
+ nova  availability-zone-list
++--------------------------------------+----------------------------------------+
+| Name                                 | Status                                 |
++--------------------------------------+----------------------------------------+
+| internal                             | available                              |
+| |- RGCC01.DEV01.Langfang             |                                        |
+| | |- nova-conductor                  | enabled :-) 2016-10-17T07:10:44.000000 |
+| | |- nova-scheduler                  | enabled :-) 2016-10-17T07:10:43.000000 |
+| | |- nova-consoleauth                | enabled :-) 2016-10-17T07:10:49.000000 |
+| | |- nova-console                    | enabled :-) 2016-10-17T07:10:42.000000 |
+| az01.region.langfang                 | available                              |
+| |- HCI001.CELL01.AZ01.DEV01.Langfang |                                        |
+| | |- nova-compute                    | enabled :-) 2016-10-17T07:10:44.000000 |
+| |- HCI002.CELL01.AZ01.DEV01.Langfang |                                        |
+| | |- nova-compute                    | enabled :-) 2016-10-17T07:10:49.000000 |
+| |- HCI003.CELL01.AZ01.DEV01.Langfang |                                        |
+| | |- nova-compute                    | enabled :-) 2016-10-17T07:10:44.000000 |
++--------------------------------------+----------------------------------------+
+28、ps aux|grep nova查看一nova为进程的程序状态
+ps -aux,然后再利用一个管道符号导向到grep去查找特定的进程,然后再对特定的进程进行操作。
+
+29、查看Linux内核版本
+命令： uname -a 
+作用： 查看系统内核版本号及系统名称 
+30、git上传代码步骤命令行
+ mkdir -p code-----创建存储要下载代码的文件夹
+ git clone git@172.20.2.110:openstackgroup/nova.git------下载克隆要下载的代码
+ git status-----修改代码以后，查看当前修改的文档名字，查看有无要修改的文件，若有，列出要修改的文档
+ git commit -am "modified radom password inject for chaodao id=24 "-------为修改的内容添加注释
+ git pull --rebase------查看当前的要合入分支，是否有其他人在使用
+ git push-----上传代码指令
+ 
+30、常用网址，openstack的代码项目网站
+https://git.openstack.org/cgit/openstack
+====================================
+31、virsh常用命令行
+virsh create <XML file>。创建虚拟机。当虚拟机创建好以后，会直接进入运行状态，virsh create ubuntu.xml  
+注意，通过create命令创建的虚拟机关闭以后，会直接被删除
+virsh shutdown ubuntu  关闭虚拟机
+virsh list --all  列出所有的虚拟机
+virsh define <XML file>。定义但不启动虚拟机
+注意：对于已经存在的虚拟机，也可以执行define命令。这样Libvirt会根据最新的定义文件修改虚拟机的配置
+virsh destroy <domain>。强制关闭虚拟机。其后的参数可以是虚拟机名、虚拟机的运行ID或虚拟机的uuid
+virsh destroy ubuntu  通过虚拟机名关闭虚拟机
+virsh destroy 44ec8308-5700-4199-9daa-3305dd82eaee  通过uuid关闭虚拟机
+virsh destroy 124  通过运行ID关闭虚拟机
+virsh domid <domain>。根据虚拟机的虚拟机名或uuid获取虚拟机的运行ID
+virsh domid ubuntu  
+virsh domid 44ec8308-5700-4199-9daa-3305dd82eaee  
+注意：只有运行的虚拟机才有运行ID。
+virsh domname <domain>。根据虚拟机的uuid或者运行ID获取虚拟机名
+virsh domuuid <domain>。根据虚拟机名或者ID获取虚拟机的uuid
+virsh dumpxml <domain>。获取虚拟机的配置信息，配置信息是以XML形式输出到终端的
+=================================
+32、tail -f 文件的名字，在创建虚机的时候，可以在文件中显示，虚机创建的过程中输出的内容
+33、rabbitctl queue-state查看数据库的状态信息，在都是0的情况下，才是正常的
+    systemct status openstack进程的名字，查看openstack进程的状态信息
+	nova-manage service list查看nova状态下service的状态信息
+	nova status --active 虚机的ID，可以强制修改虚机的状态
+=================================
+34、CentOs 设置静态IP 方法 
+１.修改网卡配置　编辑：vi /etc/sysconfig/network-scripts/ifcfg-eth0
+  DEVICE=eth0 #描述网卡对应的设备别名，例如ifcfg-eth0的文件中它为eth0
+　BOOTPROTO=static #设置网卡获得ip地址的方式，可能的选项为static，dhcp或bootp，分别对应静态指定的 ip地址，通过dhcp协议获得的ip地址，通过bootp协议获得的ip地址
+　BROADCAST=192.168.0.255 #对应的子网广播地址
+　HWADDR=00:07:E9:05:E8:B4 #对应的网卡物理地址
+
+　IPADDR=12.168.0.33 #如果设置网卡获得 ip地址的方式为静态指定，此字段就指定了网卡对应的ip地址
+　NETMASK=255.255.255.0 #网卡对应的网络掩码
+　NETWORK=192.168.0.0 #网卡对应的网络地址
+2、修改DNS 配置
+编辑：vi /etc/resolv.conf　修改后如下
+nameserver　即是DNS服务器ＩＰ地址，第一个是首选，第二个是备用
+===================
+总结要点：在配置静态IP地址的时候，最主要的是配置项是下列几项，记住这些IP地址不需要用双引号括起来，DEVICE,和ONBOOT,IPADDR,NETMASK,GATEWAY,是必备项
+BOOTPROTO="static"
+DEVICE=enp0s3
+GATEWAY=192.168.252.254
+BROADCAST=192.168.252.255
+IPADDR=192.168.252.30
+NETMASK=255.255.255.0
+DNS1=10.0.16.2
+ONBOOT="yes"
+~                     
+======================
+devstack 安装openstack 环境
+1、下载安装WGET工具
+install -y wget
+2、更改为163的yum源
+http://mirrors.163.com/.help/centos.html 163官方网站介绍
+首先备份/etc/yum.repos.d/CentOS-Base.repo
+mv /etc/yum.repos.d/CentOS-Base.repo /etc/yum.repos.d/CentOS-Base.repo.backup
+下载对应版本repo文件, 放入/etc/yum.repos.d/(操作前请做好相应备份)
+运行以下命令生成缓存
+yum clean all
+yum makecache
+3、下载devstack代码
+cd /home
+git clone https://github.com/openstack-dev/devstack.git
+目前Devstack脚本已经不支持直接使用root身份运行，你需要创建stack用户运行
+cd /home/devstack/tools/
+./create-stack-user.sh
+
+修改devstack目录权限,让stack用户可以运行
+chown -R stack:stack /home/devstack
+
+切换的stack用户下
+su stack
+cd /home/devstack
+devstack运行时候，检测到操作系统是CentOS，会额外添加RDO和EPEL源
+4、把正确的配置文件local.conf文件拷贝到destack目录下，执行./stack.sh自动安装
+
+5设置STACK权限
+.sudo echo "stack ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers 
+=======================================
+6.最小配置
+ADMIN_PASSWORD=secrete
+
+DATABASE_PASSWORD=$ADMIN_PASSWORD
+
+RABBIT_PASSWORD=$ADMIN_PASSWORD
+
+SERVICE_PASSWORD=$ADMIN_PASSWORD
+
+SERVICE_TOKEN=a682f596-76f3-11e3-b3b2-e716f9080d50
+====================================
+git clone https://github.com/openstack-dev/devstack.git -b stable/mitaka----这是下载稳定的M版本
+git clone https://github.com/openstack-dev/devstack.git -------默认下载主线分支
+=====================================
+35、爱立信数据库
+ifconfig | more
+如何判断它是管理网卡还是业务网卡？
+ifconfig | more----查看系统上网卡的更多信息
+[root@nn2 software]# df -h ----查看磁盘信息
+Filesystem            Size  Used Avail Use% Mounted on
+/dev/sda2             197G   42G  145G  23% /
+tmpfs                  64G     0   64G   0% /dev/shm
+/dev/sda1             194M   32M  153M  17% /boot
+/dev/sda4             1.4T  491G  815G  38% /export/brick1
+172.16.4.11:/gv0       12T  4.7T  6.5T  43% /var/lib/nova/instances
+
+ovs-vsctl list-ports br-int-eth2------有更多的Q命名的端口，因为neutron的网络内部是q开头的bridge连接处理的是业务网
+ovs-vsctl show -----查看系统有那些bridge
+======================
+36、Linux常用命令行
+linux中df命令的功能是用来检查linux服务器的文件系统的磁盘空间占用情况。可以利用该命令来获取硬盘被占用了多少空间，目前还剩下多少空间等信息
+．命令格式：
+
+df [选项] [文件]
+
+2．命令功能：
+
+显示指定磁盘文件的可用空间。如果没有文件名被指定，则所有当前被挂载的文件系统的可用空间将被显示。默认情况下，磁盘空间将以 1KB 为单位进行显示，除非环境变量 POSIXLY_CORRECT 被指定，那样将以512字节为单位进行显示
+
+3．命令参数：
+
+必要参数：
+
+-a 全部文件系统列表
+
+-h 方便阅读方式显示
+
+-H 等于“-h”，但是计算式，1K=1000，而不是1K=1024
+
+-i 显示inode信息
+
+-k 区块为1024字节
+
+-l 只显示本地文件系统
+
+-m 区块为1048576字节
+
+--no-sync 忽略 sync 命令
+
+-P 输出格式为POSIX
+
+--sync 在取得磁盘信息前，先执行sync命令
+
+-T 文件系统类型
+
+
+选择参数：
+
+--block-size=<区块大小> 指定区块大小
+
+-t<文件系统类型> 只显示选定文件系统的磁盘信息
+
+-x<文件系统类型> 不显示选定文件系统的磁盘信息
+
+--help 显示帮助信息
+
+--version 显示版本信息
+=============================
+37、Linux下网络的设置
+Redhat Linux的网络配置，基本上是通过修改几个配置文件来实现的，虽然也可以用ifconfig来设置IP，用route来配置默认网关，用hostname来配置主机名，但是重启后会丢失。
+
+相关的配置文件
+/ect/hosts 配置主机名和IP地址的对应
+/etc/sysconfig/network 配置主机名和网关
+/etc/sysconfig/network-scripts/ifcfg-eth0 eth0配置文件，eth1则文件名为ifcfg-eth1，以此类推
+=======================
+38、主机名配置
+Linux 的/etc/hosts是配置ip地址和其对应主机名的文件，这里可以记录本机的或其他主机的ip及其对应主机名
+Hosts - The static table lookup for host name（主机名查询静态表）
+hosts文件是Linux系统中一个负责IP地址与域名快速解析的文件，以ASCII格式保存在“/etc”目录下，文件名为“hosts”
+（不同的linux版本，这个配置文件也可能不同。比如Debian的对应文件是/etc/hostname）。
+hosts文件包含了IP地址和主机名之间的映射，还包括主机名的别名。
+在没有域名服务器的情况下，系统上的所有网络程序都通过查询该文件来解析对应于某个主机名的IP地址，
+否则就需要使用DNS服务程序来解决。通常可以将常用的域名和IP地址映射加入到hosts文件中，实现快速方便的访问。
+配置文件格式说明
+一般情况下hosts文件的每行为一个主机，每行由三部份组成，每个部份由空格隔开。其中#号开头的行做说明，不被系统解释
+192.168.1.100 linmu100.com linmu100 
+第一部份：网络IP地址； 
+第二部份：主机名或域名； 
+第三部份：主机名别名； 
+当然每行也可以是两部份，即主机IP地址和主机名；比如 192.168.1.100 linmu100。 
+这里可以稍微解释一下主机名(hostname)和域名(Domain）的区别：主机名通常在局域网内使用，通过hosts文件，主机名就被解析到对应ip；域名通常在internet上使用，
+但如果本机不想使用internet上的域名解析，这时就可以更改hosts文件，加入自己的域名解析
+
+/hosts文件可以帮助解决哪些问题 
+远程登录linux主机过慢问题 
+
+有时客户端想远程登录一台linux主机，但每次登录输入密码后都会等很长一段时间才会进入，这是因为linux主机在返回信息时需要解析ip，
+如果在linux主机的hosts文件事先加入客户端的ip地址，这时再从客户端远程登录linux就会变很快。 
+注：这里所说的远程登录不仅仅是ssh，还可能是mysql远程登录，或是文件共享的查询等
+
+双机互连 
+当两台主机只是双机互连时，这时两台主机都需要设置自己的ip，同时在对方的hosts文件里加入自己的ip和主机名
+
+主机名修改工具hostname; 
+其实主机名的修改也有专用工具，就是hostname 
+hostname - show or set the system’s host name 
+显示主机名： 
+# hostname 
+linmu100 
+此主机的主机名是linmu100，不加参数是用来显示当前主机的主机名； 
+临时设置主机名： 
+# hostname test100 
+# hostname 注：显示主机名 
+test100 
+通过hostname 工具来设置主机名只是临时的，下次重启系统时，此主机名将不会存在； 
+显示主机IP： 
+# hostname -i 
+192.168.1.100 
+域名只是在公网（INtERNET)中存在(以实验为目的的局域网域网实验性除外），每个域名都对应一个IP地址，但一个IP 地址可有对应多个域名。
+主机名就机器本身的名字，域名是用来解析到IP的
+39、查找文件命令
+find / -name httpd.conf 
+===============================
+40、mysql数据库相关命令行汇总
+1、导出mysql数据库相关命令行
+导出指定某一个数据库
+mysqldump -u nova -pnova nova >mynova.sql
+说明-unova -pnova这两个参数是进入数据库的账户名和密码
+nova为指定导出的某一特定数据库
+mynova.sql为导出时，起的一个文件名字
+使用fron-mysql软件，本地的数据库时，操作步骤为，需要先在本地创建一个相同命名的数据库nova，然后导入sql类型的数据库文件即可
+2、查询表有哪些具体字段
+show columns from 表名
+3、修改某表中某字段的值
+使用update语句。语法是：update table_name set column = value[, colunm = value...] [where condition];[ ]中的部分表示可以有也可以没有
+4、把mysql数据库表的一列置空
+update tableName set columnname  =null
+5、批量更新
+mysql更新语句很简单，更新一条数据的某个字段，一般这样写
+UPDATE mytable SET myfield = 'value' WHERE other_field = 'other_value'
+如果更新同一字段为同一个值，mysql也很简单，修改下where即可：
+UPDATE mytable SET myfield = 'value' WHERE other_field in ('other_values');
+这里注意 ‘other_values' 是一个逗号（，）分隔的字符串，如：1,2,3
+mysql的循环语句
+WHILE……DO……END WHILE
+delimiter $$　　　　// 定义结束符为 $$ 
+drop procedure if exists wk; // 删除 已有的 存储过程 
+create procedure wk()　　　　　　//　 创建新的存储过程 
+begin
+declare i int;　　　　　　　　　　// 变量声明 
+set i = 1;　　　　　 
+while i < 11 do 　　　　　　　　　　// 循环体 
+insert into user_profile (uid) values (i); 
+set i = i +1; 
+end while; 
+end $$　　　　　　　　　　　　　　　// 结束定义语句 
+ 
+// 调用 
+ 
+delimiter ;　　　　　　　　　　// 先把结束符 回复为; 
+call wk();
+===============================
+压缩包命令
+01-.tar格式
+解包：[＊＊＊＊＊＊＊]tarxvfFileName.tar打包：[＊＊＊＊＊＊＊] tar cvf FileName.tar DirName（注：tar是打包，不是压缩！）
+
+02-.gz格式
+解压1：[＊＊＊＊＊＊＊]gunzipFileName.gz解压2：[＊＊＊＊＊＊＊] gzip -d FileName.gz
+压 缩：[＊＊＊＊＊＊＊]$ gzip FileName
+
+03-.tar.gz格式
+解压：[＊＊＊＊＊＊＊]tarzxvfFileName.tar.gz压缩：[＊＊＊＊＊＊＊] tar zcvf FileName.tar.gz DirName
+
+04-.bz2格式
+解压1：[＊＊＊＊＊＊＊]bzip2?dFileName.bz2解压2：[＊＊＊＊＊＊＊] bunzip2 FileName.bz2
+压 缩： [＊＊＊＊＊＊＊]$ bzip2 -z FileName
+
+05-.tar.bz2格式
+解压：[＊＊＊＊＊＊＊]tarjxvfFileName.tar.bz2压缩：[＊＊＊＊＊＊＊] tar jcvf FileName.tar.bz2 DirName
+
+06-.bz格式
+解压1：[＊＊＊＊＊＊＊]bzip2?dFileName.bz解压2：[＊＊＊＊＊＊＊] bunzip2 FileName.bz
+
+07-.tar.bz格式
+解压：[＊＊＊＊＊＊＊]$ tar jxvf FileName.tar.bz
+
+08-.Z格式
+解压：[＊＊＊＊＊＊＊]uncompressFileName.Z压缩：[＊＊＊＊＊＊＊] compress FileName
+
+09-.tar.Z格式
+解压：[＊＊＊＊＊＊＊]tarZxvfFileName.tar.Z压缩：[＊＊＊＊＊＊＊] tar Zcvf FileName.tar.Z DirName
+
+10-.tgz格式
+解压：[＊＊＊＊＊＊＊]$ tar zxvf FileName.tgz
+
+11-.tar.tgz格式
+解压：[＊＊＊＊＊＊＊]tarzxvfFileName.tar.tgz压缩：[＊＊＊＊＊＊＊] tar zcvf FileName.tar.tgz FileName
+
+12-.zip格式
+解压：[＊＊＊＊＊＊＊]unzipFileName.zip压缩：[＊＊＊＊＊＊＊] zip FileName.zip DirName
+
+13-.lha格式
+解压：[＊＊＊＊＊＊＊]lha?eFileName.lha压缩：[＊＊＊＊＊＊＊] lha -a FileName.lha FileName
+
+14-.rar格式
+解压：[＊＊＊＊＊＊＊]raraFileName.rar压缩：[＊＊＊＊＊＊＊] rar e FileName.rar
+===============================
+41、生成的xml文件中，有虚拟机的元组数据，这个元组数据的内容与nova show uuid的内容对应，也从侧面反映了，网络、MAC地址、镜像都通过以后
+才最终生成XML文件来启动虚拟机
+=======================
+42、Nova list命令行使用实践
+nova list --deleted参数，显示已经删除的虚机，从这个参数也反映出了，虚机虽然用命令删除了，但是在数据库中还是存在的
+nova list 命令行
+[root@RGCC01 ~(keystone_admin)]# nova help list
+usage: nova list [--reservation-id <reservation-id>] [--ip <ip-regexp>]
+                 [--ip6 <ip6-regexp>] [--name <name-regexp>]
+                 [--instance-name <name-regexp>] [--status <status>]
+                 [--flavor <flavor>] [--image <image>] [--host <hostname>]
+                 [--all-tenants [<0|1>]] [--tenant [<tenant>]]
+                 [--user [<user>]] [--deleted] [--fields <fields>] [--minimal]
+                 [--sort <key>[:<direction>]]
+
+List active servers.
+
+Optional arguments:
+  --reservation-id <reservation-id>
+                                Only return servers that match reservation-id.
+  --ip <ip-regexp>              Search with regular expression match by IP
+                                address.
+  --ip6 <ip6-regexp>            Search with regular expression match by IPv6
+                                address.
+  --name <name-regexp>          Search with regular expression match by name
+  --instance-name <name-regexp>
+                                Search with regular expression match by server
+                                name.
+  --status <status>             Search by server status
+  --flavor <flavor>             Search by flavor name or ID
+  --image <image>               Search by image name or ID
+  --host <hostname>             Search servers by hostname to which they are
+                                assigned (Admin only).
+  --all-tenants [<0|1>]         Display information from all tenants (Admin
+                                only).
+  --tenant [<tenant>]           Display information from single tenant (Admin
+                                only). The --all-tenants option must also be
+                                provided.
+  --user [<user>]               Display information from single user (Admin
+                                only).
+  --deleted                     Only display deleted servers (Admin only).
+  --fields <fields>             Comma-separated list of fields to display. Use
+                                the show command to see which fields are
+                                available.
+  --minimal                     Get only uuid and name.
+  --sort <key>[:<direction>]    Comma-separated list of sort keys and
+                                directions in the form of <key>[:<asc|desc>].
+                                The direction defaults to descending if not
+                                specified.
+
+nova list命令行的使用总结
+一般使用的命令行是nova list
+比较使用的用法：
+下列命令行参数在使用的过程中，赋值方式可以是空格隔开，也可以使用“=”等号方式
+显示指定节点上的虚拟机
+nova list --host node_1
+显示指定ip的虚拟机
+nova list --ip 10.0.0.2
+显示使用指定镜像的虚拟机
+nova list --image c3f763fd-63c8-4dd8-97c9-4f5f4a39d6ab
+显示使用指定规格的虚拟机
+nova list --flavor=2
+显示指定状态的虚拟机
+nova list --status=active
+显示虚拟机并且显示指定字段
+nova list --fields <字段>
+平时常用的一般有instance_name、host、image、flavor、vm_state等，非常实用，
+比如想去计算节点virsh命令里操作虚拟机，使用nova list --fields instance_name能够很快的得到虚拟机id与instance_name之间的对应关系。
+[root@cc ~]# nova list --fields instance_name
++--------------------------------------+-------------------+
+| ID                                   | Instance Name     |
++--------------------------------------+-------------------+
+| b8b71597-d2af-42ed-abe7-b994f63570bb | instance-00000009 |
+| 9d0daae5-38dc-49c2-9f89-0a3d341889db | instance-0000000a |
+| 14e9c941-1e3c-4848-9d07-7f4624831d03 | instance-0000000b |
++--------------------------------------+-------------------+
+上面的这些参数可以综合使用，从而增加过滤条件，得到你想要的信息
+=============================================
+43、openstack cinder服务
+提供卷服务，创建一个卷，把这个卷附在某个虚拟机上，使用这个卷的话，需要进入这个虚拟机里面，（此时这个卷对虚机来说，相当与新增了一块硬盘），对这个卷进行
+分区格式化，这些完成以后，把格式化后的分区，挂载到某一目录下面，此时就可以对这个卷使用了。因此，cinder提供一种永久的存储服务,类似与现实生活中
+为电脑增加的u盘或者扩展硬盘
+Cinder提供持久化块存储，.一个独立的volume可以灵活的挂载和卸载到不同的VM实例（就好比我们的一块硬盘拔插了）。
+VM实例可以用cinder volume作为启动盘。Block Storage服务无法提供类似于NFS的共享存储。一个块设备同时只能挂在到一个VM实例。
+一个卷只能挂载到一个虚机上，不能进行共享。
+个人理解
+flavor硬件模版，这里面的<disk> 参数，代表的是我虚机硬盘的大小，而nova boot命令行，--block-device-mapping <dev-name=mapping>，这个参数代表的是
+挂载卷的大小，类似与现实中的外接u盘
+=============================================
+44、将目录下的所有目录包括子目录陆续复制到另外一个目录
+cp -r /home/tomcat/ /tmp/bak
+==========================
+45、从dumpxml文件中，查看设备从磁盘启动，而磁盘的方式通过网络的方式进行挂接，进而磁盘从卷的方式进行读写。
+===========================
+46、虚拟机的工作流
+nova boot 的工作流
+    为虚拟机分配网络，由nova.compute.manager处理。
+    创建磁盘文件并映射块设备，在这个过程中，首先从glance服务下载对应的image到instance_dir/_base， 将下载下来的镜像转换成RAW格式。创建磁盘文件instance_dir/uuid/{disk, disk.local, disk.swap}。
+    生成libvirt xml文件，拷贝一份/var/lib/nova/instance/uuid/libvirt.xml。
+    建立与磁盘卷的连接（这个主要用于boot-from-volume这种方式），具体执行什么样的操作取决于所使用volume的driver，iSCSI是通过tgt或者iscsiadm来建立连接，RBD主要由qemu处理。
+    建立必要的network stack，如创建bridges，为虚拟机创建安全组等。
+    通过libvirt用生成的xml文件定义一台虚拟机，等价于virsh define /var/lib/instance/uuid/libvirt.xml。
+    启动实例，virsh start uuid。
+hard reboot 的工作流
+    destroy the domain 执行libvirt操作virsh destroy instance-id，执行当前操作不会损坏虚拟机的任何数据， 仅做kill -9 qemu-system-x86_64进程。
+    重新建立与磁盘卷的连接。
+    为虚拟机重新生成libvirt XML文件。
+    检查并且重新下载丢失的备份文件（instance_dir/_base）。
+    重新创建网桥，Vlan接口。
+    重新生成iptables规则并作用于虚拟机
+suspend 的工作流
+    相当于执行virsh managed-save操作，行为类似于hiberate操作。
+    保存内存里面的数据到磁盘。
+    恢复虚拟机，virsh resume instance-id。
+================================
+46、openstack启动实例的方式
+实例其实是运行在云平台的虚拟机。你可以直接通过一个可用的openstack镜像或者一个已经持久化到卷的
+镜像来启动一个实例。openstack image service为不同项目的成员提供一个访问的镜像池。
+当你从一个镜像启动一个实例时，openstack会从glance下载镜像，在虚机启动的计算节点上创建一个镜像的本地拷贝，
+镜像拷贝存放在_base目录下相应的instance目录下，
+这样，如果这个计算节点上创建相同虚拟机时，首先查找_base中是否已经下载，如果已经下载过了，则直接copy就可以了。
+=================================
+47、source命令用法：
+source FileName
+作用:在当前bash环境下读取并执行FileName中的命令。
+注：该命令通常用命令“.”来替代。
+如：source .bash_rc 与 . .bash_rc 是等效的。
+注意：source命令与shell scripts的区别是，
+source在当前bash环境下执行命令，而scripts是启动一个子shell来执行命令。这样如果把设置环境变量（或alias等等）的命令写进scripts中，
+就只会影响子shell,无法改变当前的BASH,所以通过文件（命令列）设置环境变量时，要用source 命令。
+=================================
+48、部署openstack环境的前提是，把数据库和rabbitmq消息队列安装上，应该为各个组件通信需要rabbitmq消息队列进行通信，数据库用于各个组件往
+数据库里面建表使用
+================================
+49、yum安装常用命令
+yum install package------------这个用可能安装的时候，从网络上找相应的包进行安装
+yum localinstall package-------从本机目录搜索并安装软件包
+yum groupinstall group 安装某个组件的全部软件包
+=================================
+50、
+shell脚本 test.sh调用的时候传入参数，param1，param2:
+#test.sh param1 param2
+那么在脚本内部相当于把 test.sh param1 param2 看成三个参数出入，所以参数0为$0 （test.sh），
+参数1为$1 (parm1)，参数2为$2 (parm2)，也就是把脚本自己的名称看成参数0，参数个数$#还是2，而不是3，这个要注意。
+这种调用方式有点想main函数在参数传入的时候把arg[0],看成可执行文件本身，参数1才是arg[1]........，原理上是相同的
+执行shell脚本中特定的函数，如下所示，./calculator add 2 3 ，shell脚本名字(calculator) 函数名字(add) 传给函数的参数(2 3)
+==============================
+51、shell脚本的知识点
+Shell中函数的定义有两种方法，如下：
+function fname()
+{
+statements；
+}
+或
+fname()
+{
+statements;
+}
+注意，()内是没有参数的，它并不像C语言那样，在()里可以有参数。
+
+那大家可能就郁闷了，函数调用或多或少总是会需要一些参数，那么这些参数要怎么传递进来呢？其实参数传递方式为：fname；（不需要传递参数）或fname agr1 arg2（需要传递两个参数）；
+=========================
+shell脚本main函数问题 
+正确的写法
+main()  
+{  
+   echo "hello";  
+}  
+main 
+如果main函数第一个字母大写也是可以的：Main
+==========================
+在shell脚本中可以输入Linux的相关命令行，这个命令行的前面需要输入$字符
+====================================
+52、查询Python版本号
+python -V或者 python --version
+===================================
+53、vi的使用
+为查找一个字符串，在vi命令模式下键入“/”，后面跟要查找的字符串，再按回车。vi将光标定位在该串下一次出现的地方上。
+键入n跳到该串的下一个出现处，键入N跳到该串的上一个出现处。
+为了在文件中回头查找，使用?代替/。在此情况下，键入n跳到该串的上一个出现处，键入N跳到该串的下一个出现处
+如果vi找到要求的串，光标会停留在该串第一次出现的地方。如果没有找到该串，vi会在屏幕的最后一行显示pattern not found。
+查找通常是区分大小写的，如果希望vi在查找过程中忽略大小写，则键入:set ic。要使其变回默认状态，则键入:set noic。
+
+s是替换命令，g代表全程替换
+查找替换:%s/old/new/g 全文替换指定字符串  old代表要被替换的字符串 new代表要替换成的字符串 最后的g代表不用提示确认，
+如果需要提示确认操作的话，把g改为c
+跳到指定的某一行
+:12  跳转到某一指定行
+===================================
+54、opentack在安装的时候，会把源码拷贝到下列目录下一份
+/usr/lib/python2.6/site-packages
+openstack的配置文件存放到下来目录下
+/etc、各个组件相应目录名字下
+日志文件存放在下列目录下下
+/var/log，各个组件的相应目录下
+======================================
+55、确认系统是否安装了git
+在终端输入 git --version,如果可以显示版本信息，就说明安装了git
+======================================
+56、wget下载网络文件方式
+wget是linux下一个从网络上自动下载文件的常用自由工具。它支持HTTP，HTTPS和FTP协议，可以使用HTTP代理。
+一般的使用方法是: wget + 空格 + 参数 + 要下载文件的url路径，例如：
+wget http://www.linuxsense.org/xxxx/xxx.tar.gz
+-c参数, 这个也非常常见, 可以断点续传, 如果不小心终止了, 可以继续使用命令接着下载，例如：
+wget -c http://www.linuxsense.org/xxxx/xxx.tar.gz
+Wget常用参数
+-b：后台下载，Wget默认的是把文件下载到当前目录。
+-O：将文件下载到指定的目录中。
+-P：保存文件之前先创建指定名称的目录。
+-t：尝试连接次数，当Wget无法与服务器建立连接时，尝试连接多少次。
+-c：断点续传，如果下载中断，那么连接恢复时会从上次断点开始下载。
+-r：使用递归下载
+======================================
+57、案例分析，数据库连接不上，定位思路，
+第一看mysql的进程是否启动------ps -ef | grep mysqld或者用service restart mysqld重新启用一下
+第二看mysql服务是否安装--------rpm -qa | grep mysql
+第三看，如果安装了，看是否配置的问题，造成没有启动
+======================================
+58、查看mysql版本
+在终端下：mysql -V
+在mysql中：mysql> status;
+=======================================
+59、查看系统版本
+uname -a
+=======================================
+60、虚机迁移，有冷迁和热迁
+冷迁有关机修改数据库
+
+热迁移
+热迁移（Live Migration，又叫动态迁移、实时迁移），即虚拟机保存/恢复(Save/Restore)：将整个虚拟机的运行状态完整保存下来，
+同时可以快速的恢复到原有硬件平台甚至是不同硬件平台上。恢复以后，虚拟机仍旧平滑运行，用户不会察觉到任何差异。
+openstack热迁移
+OpenStack有两种在线迁移类型：live migration和block migration。Livemigration需要实例保存在NFS共享存储中，
+这种迁移主要是实例的内存状态的迁移，速度应该会很快。Block migration除了实例内存状态要迁移外，还得迁移磁盘文件，
+速度会慢些，但是它不要求实例存储在共享文件系统中。
+NFS允许一个系统在网络上与他人共享目录和文件。通过使用NFS，用户和程序可以像访问本地文件一样访问远端系统上的文件。
+迁移失败的一个原因可能有会计算节点的资源不够。
+本质是因为在openstack源码中，有一段针对热迁移时计算节点计算资源检测的函数，该函数的作用检测迁移的源节点和目的节点的计算资源是否匹配，
+从而判断能否承载实例的运行
+热迁移的时候，迁移成功，会把原有计算节点上的虚机进程kill掉，在新的计算节点上进行新创建。如果迁移不成功，那么在原有计算节点上存在。
+迁移成功的表现是在日志里面提示陈功。
+使用如下的命令做虚拟机迁移，这里，我要迁移的虚拟机是id为45cb1fde-c98e-49ca-8b0c-a3e30d2309b1的虚拟机，它的名称是three，
+将它从openstack-MS-7673节点，迁移至openstack-1-0节点。
+nova live-migration 45cb1fde-c98e-49ca-8b0c-a3e30d2309b1 openstack-1-0 
+
+[root@RGCC01 ~(keystone_admin)]$ nova help live-migration
+usage: nova live-migration [--block-migrate] [--disk-over-commit]
+                           <server> [<host>]
+
+Migrate running server to a new machine.
+
+Positional arguments:
+  <server>            Name or ID of server.
+  <host>              destination host name.
+
+Optional arguments:
+  --block-migrate     True in case of block_migration.
+                      (Default=False:live_migration)
+  --disk-over-commit  Allow overcommit.(Default=False)
+[root@RGCC01 ~(keystone_admin)]$ 
+
+===========================================
+61、显示计算节点的虚机实例
+nova-manage vm list
+===========================================
+62、备份数据库的常用脚本
+mysqldump -uphenix -pphenix --all-databases > /backup/Mysql_`date +%F`_phenix.sql
+数据库的备份和恢复
+备份所有数据库：mysqldump --opt --all-databases > openstack.sql
+备份nova数据库：mysqldump --opt nova > nova.sql 
+恢复：
+先停止服务（包括mysql），运行mysql nova < nova.sql，然后启动所有服务即可。 
+================================================
+63、G版本上，查看openstack进程的命令格式 
+    /etc/init.d/openstack-cinder-api status
+    /etc/init.d/openstack-cinder-api restart
+    /etc/init.d/openstack-cinder-scheduler status
+    /etc/init.d/openstack-cinder-scheduler restart
+    /etc/init.d/openstack-cinder-scheduler status
+    /etc/init.d/openstack-cinder-api status
+=================================================
+64、glusterfs服务常用命令行
+启动/关闭/查看glusterd服务
+# /etc/init.d/glusterd start
+# /etc/init.d/glusterd stop
+# /etc/init.d/glusterd status 
+
+开机自动启动glusterd服务
+# chkconfig glusterd on # Red Hat
+# update-rc.d glusterd defaults # Debian
+# echo "glusterd" >>/etc/rc.local # Others
+
+查看配置信息
+# cat /etc/rc.local  
+ 为存储池添加/移除服务器节点
+
+在其中一个节点上操作即可：
+# gluster peer probe
+# gluster peer detach
+注意，移除节点时，需要提前将该节点上的Brick移除。
+查看所有节点的基本状态（显示的时候不包括本节点）
+# gluster peer status 
+
+挂载分区
+# mount -t ext4 /dev/sdd1 /mnt/brick1 
+
+创建/启动/停止/删除卷
+# gluster volume create [stripe | replica ] [transport [tcp | rdma | tcp,rdma]] ...
+# gluster volume start
+# gluster volume stop
+# gluster volume delete
+注意，删除卷的前提是先停止卷
+
+客户端以glusterfs方式挂载
+# mount -t glusterfs :/
+对于OpenStack，计算和控制节点都要挂载/var/lib/nova/instances，控制节点还要挂载/var/lib/glance/images
+
+查看卷信息
+列出集群中的所有卷：
+# gluster volume list
+查看集群中的卷信息：
+# gluster volume info [all]
+查看集群中的卷状态：
+# gluster volume status [all]
+# gluster volume status [detail| clients | mem | inode | fd]
+查看本节点的文件系统信息：
+# df -h []
+查看本节点的磁盘信息：
+# fdisk -l 
+
+配置卷
+# gluster volume set 
+# 查看集群的节点信息
+gluster peer status 
+# 查看卷信息
+gluster volume info 
+
+ 服务器节点
+# gluster peer status  //查看所有节点信息，显示时不包括本节点
+
+# gluster peer probe   NODE-NAME //添加节点
+
+# gluster peer detach  NODE-NAME //移除节点，需要提前将该节点上的brick移除
+
+ 查看卷
+
+# gluster volume list              /*列出集群中的所有卷*/
+# gluster volume info [all]      /*查看集群中的卷信息*/
+# gluster volume status [all]  /*查看集群中的卷状态*/
+
+# gluster volume status  [detail| clients | mem | inode | fd] 
+======================================
+65、上传镜像
+[root@cc ~]# glance help image-create
+usage: glance image-create [--id <IMAGE_ID>] [--name <NAME>] [--store <STORE>]
+                           [--disk-format <DISK_FORMAT>]
+                           [--container-format <CONTAINER_FORMAT>]
+                           [--owner <TENANT_ID>] [--size <SIZE>]
+                           [--min-disk <DISK_GB>] [--min-ram <DISK_RAM>]
+                           [--location <IMAGE_URL>] [--file <FILE>]
+                           [--checksum <CHECKSUM>] [--copy-from <IMAGE_URL>]
+                           [--is-public [True|False]]
+                           [--is-protected [True|False]]
+                           [--property <key=value>] [--human-readable]
+
+这个示例使用以下参数：
+
+--id <IMAGE_ID>    镜像的ID
+--name <NAME>      镜像的名称
+--store <STORE>    储存的镜像上传到
+--disk-format <DISK_FORMAT>
+                    镜像的格式。可以接受的格式包含: ami,ari, aki, vhd, vmdk, raw, qcow2, vdi, and iso.
+--container-format <CONTAINER_FORMAT>
+                    镜像容器的格式。可以接受的格式包含:ami,ari, aki, bare, and ovf.
+--owner <TENANT_ID>   拥有该镜像的租户
+--size <SIZE>      镜像的大小(以bytes表示). 一般只与'--location'和'--copy_from'一起使用。
+--min-disk <DISK_GB>     启动镜像所需的最小硬盘空间(用gigabytes表示).
+--min-ram <DISK_RAM>     启动镜像所需的最小内存数量(用megabytes表示).
+--location <IMAGE_URL>
+                    镜像所在位置的URL。例如，如果镜像储存在swift中，
+                    你可以指定：'swift://account:key@example.com/container/obj'。
+--file <FILE>      在创建过程中将要被上传的本地文件（包括硬盘镜像）。
+                    另外，镜像也可以通过stdin传递给客户端。
+--checksum <CHECKSUM>
+                    被Glance使用的可用于认证的镜像数据的哈希值，
+                    在此请提供一个md5校验值。
+--copy-from <IMAGE_URL>
+                    用法和'--location'参数相似，但表明Glance服务器应该能立即从镜像所储存的地方拷贝数据并储存。                                       
+--is-public [True|False]
+                    表示镜像是否能被公众访问。
+--is-protected [True|False]
+                    用于避免镜像被删除。
+--property <key=value>
+                    与镜像有关的任意的属性。可以使用很多次。
+--human-readable     用对人友好的格式打印镜像的尺寸。
+--progress       显示上传的进度条
+
+可以使用-property标识设置任何任意的属性
+openstack image create "cirros" --file cirros-0.3.4-x86_64-disk.img --disk-format qcow2 --container-format bare --public
+===========================
+66、在openstack代码编写的时候，print语句是正确，但是是输出到屏幕上的，如果输入到Log日志里面，需要你把要输入的语句用logging.info函数进行输出到
+日志文件中
+67、du -sh*查看当前目录下的文件夹大小
+================================
+68、ovs的知识点
+===============================
+69、memcached知识点
+Memcached 是一个高性能的分布式内存对象缓存系统，用于动态Web应用以减轻数据库负载。
+它通过在内存中缓存数据和对象来减少读取数据库的次数，从而提高动态、数据库驱动网站的速度。
+Memcached基于一个存储键/值对的hashmap。其守护进程（daemon ）是用C写的，
+但是客户端可以用任何语言来编写，并通过memcached协议与守护进程通信。
+memcached作为高速运行的分布式缓存服务器，通过在内存里维护一个统一的巨大的Hash表，能够用来存储各种格式的数据。
+基于libevent的事件处理
+memcached的服务器客户端通信并不使用复杂的XML等格式，而使用简单的基于文本行的协议。
+libevent是个程序库，它将Linux的epoll、BSD类操作系统的kqueue等事件处理功能封装成统一的接口。
+即使对服务器的连接数增加，也能发挥O(1)的性能。memcached使用这个libevent库，
+因此能在Linux、BSD、Solaris等操作系统上发挥其高性能。
+Memcache用到了libevent这个库用于Socket的处理，所以还需要安装libevent
+用wget指令直接下载这两个东西.下载回源文件后。
+1.先安装libevent。这个东西在配置时需要指定一个安装路径，即./configure –prefix=/usr；然后make；然后make install；
+2.再安装memcached，只是需要在配置时需要指定libevent的安装路径即./configure –with-libevent=/usr；然后make；然后make install
+启动Memcached服务
+ /usr/local/bin/memcached -d -m 10 -u root -l 192.168.141.64 -p 12000 -c 256 -P /tmp/memcached.pid
+ -d选项是启动一个守护进程，
+-m是分配给Memcache使用的内存数量，单位是MB，我这里是10MB，
+-u是运行Memcache的用户，我这里是root，
+-l是监听的服务器IP地址，如果有多个地址的话，我这里指定了服务器的IP地址192.168.0.200，
+-p是设置Memcache监听的端口，我这里设置了12000，最好是1024以上的端口，
+-c选项是最大运行的并发连接数，默认是1024，我这里设置了256，按照你服务器的负载量来设定，
+-P是设置保存Memcache的pid文件，我这里是保存在 /tmp/memcached.pid，
+======================
+keystone库的token表的大小，会随着系统的运行，逐渐的在增长。
+在openstack环境中，为了给MySQL的token表瘦身，可以后端采用Memcached作为Token的存储后端，Memcached存放Token，
+Memcached使用OpenStack
+安装Memcached服务：
+yum -y install memcached
+修改
+keystone.conf配置文件，把token存储的驱动修改为了memcache：
+[token]
+driver = keystone.token.backends.memcache.Token
+重启服务：
+service memcached restart
+service openstack-keystone restart
+======================
+70、Netstat知识点
+Netstat 命令用于显示各种网络相关信息，如网络连接，路由表，接口状态 (Interface Statistics)，masquerade 连接，
+多播成员 (Multicast Memberships) 等等。
+输出信息含义：
+从整体上看，netstat的输出结果可以分为两个部分：
+一个是Active Internet connections，称为有源TCP连接，其中"Recv-Q"和"Send-Q"指%0A的是接收队列和发送队列。
+这些数字一般都应该是0。如果不是则表示软件包正在队列中堆积。这种情况只能在非常少的情况见到。
+另一个是Active UNIX domain sockets，称为有源Unix域套接口(和网络套接字一样，但是只能用于本机通信，性能可以提高一倍)。
+Proto显示连接使用的协议,RefCnt表示连接到本套接口上的进程号,Types显示套接口的类型,State显示套接口当前的状态,
+Path表示连接到套接口的其它进程使用的路径名。
+
+常见参数
+-a (all)显示所有选项，默认不显示LISTEN相关
+-t (tcp)仅显示tcp相关选项
+-u (udp)仅显示udp相关选项
+-n 拒绝显示别名，能显示数字的全部转化成数字。
+-l 仅列出有在 Listen (监听) 的服务状态
+-p 显示建立相关链接的程序名
+-r 显示路由信息，路由表
+-e 显示扩展信息，例如uid等
+-s 按各个协议进行统计
+-c 每隔一个固定时间，执行该netstat命令。
+提示：LISTEN和LISTENING的状态只有用-a或者-l才能看到
+例如：列出所有端口 (包括监听和未监听的)
+列出所有端口 netstat -a
+
+如何查看memcache服务器端版本:  ./memcached  -h
+memcache的运行状态可以方便的用 stats 命令显示。
+首先用telnet 127.0.0.1 11211这样的命令连接上memcache，然后直接输入stats就可以得到当前memcache的状态
+查看memcache运行状态
+# netstat -nlptu|grep memcached
+======================================
+71、ps命令详解
+Linux中的ps命令是Process Status的缩写。ps命令用来列出系统中当前运行的那些进程。
+ps命令列出的是当前那些进程的快照，就是执行ps命令的那个时刻的那些进程，如果想要动态的显示进程信息，就可以使用top命令
+要对进程进行监测和控制，首先必须要了解当前进程的情况，也就是需要查看当前进程，而 ps 命令就是最基本同时也是非常强大的进程查看命令。
+使用该命令可以确定有哪些进程正在运行和运行的状态、进程是否结束、进程有没有僵死、哪些进程占用了过多的资源等等。
+总之大部分信息都是可以通过执行该命令得到的。 
+ps 为我们提供了进程的一次性的查看，它所提供的查看结果并不动态连续的；如果想对进程时间监控，应该用 top 工具。 
+kill 命令用于杀死进程。
+linux上进程有5种状态: 
+1. 运行(正在运行或在运行队列中等待) 
+2. 中断(休眠中, 受阻, 在等待某个条件的形成或接受到信号) 
+3. 不可中断(收到信号不唤醒和不可运行, 进程必须等待直到有中断发生) 
+4. 僵死(进程已终止, 但进程描述符存在, 直到父进程调用wait4()系统调用后释放) 
+5. 停止(进程收到SIGSTOP, SIGSTP, SIGTIN, SIGTOU信号后停止运行运行) 
+ps工具标识进程的5种状态码: 
+D 不可中断 uninterruptible sleep (usually IO) 
+R 运行 runnable (on run queue) 
+S 中断 sleeping 
+T 停止 traced or stopped 
+Z 僵死 a defunct (”zombie”) process 
+Linux下显示系统进程的命令ps，最常用的有ps -ef 和ps aux。这两个到底有什么区别呢？两者没太大差别，讨论这个问题，
+要追溯到Unix系统中的两种风格，System Ｖ风格和BSD 风格，ps aux最初用到Unix Style中，而ps -ef被用在System V Style中，
+两者输出略有不同。现在的大部分Linux系统都是可以同时使用这两种方式的
+ps -ef 是用标准的格式显示进程的、其格式如下
+UID    //用户ID、但输出的是用户名
+PID    //进程的ID
+PPID    //父进程ID
+C      //进程占用CPU的百分比
+STIME  //进程启动到现在的时间
+TTY    //该进程在那个终端上运行，若与终端无关，则显示? 若为pts/0等，则表示由网络连接主机进程。
+CMD    //命令的名称和参数
+
+ps aux 是用BSD的格式来显示、其格式如下
+USER      //用户名
+%CPU      //进程占用的CPU百分比
+%MEM      //占用内存的百分比
+VSZ      //该进程使用的虚拟內存量（KB）
+RSS      //该进程占用的固定內存量（KB）（驻留中页的数量）
+STAT      //进程的状态
+START    //该进程被触发启动时间
+TIME      //该进程实际使用CPU运行的时间
+其中STAT状态位常见的状态字符有
+D      //无法中断的休眠状态（通常 IO 的进程）；
+R      //正在运行可中在队列中可过行的；
+S      //处于休眠状态；
+T      //停止或被追踪；
+W      //进入内存交换 （从内核2.6开始无效）；
+X      //死掉的进程 （基本很少见）；
+Z      //僵尸进程；
+<      //优先级高的进程
+N      //优先级较低的进程
+L      //有些页被锁进内存；
+s      //进程的领导者（在它之下有子进程）；
+l      //多线程，克隆线程（使用 CLONE_THREAD, 类似 NPTL pthreads）；
++      //位于后台的进程组；
+==============================
+72、Linux/Unix下pid文件作用浅析
+在Linux系统的目录/var/run下面一般我们都会看到很多的*.pid文件。而且往往新安装的程序在运行后也会在/var/run目录下面产生自己的pid文件
+(1) pid文件的内容：pid文件为文本文件，内容只有一行, 记录了该进程的ID。
+(2) pid文件的作用：防止进程启动多个副本。只有获得pid文件(固定路径固定文件名)写入权限(F_WRLCK)的进程才能正常启动并把自身的PID写入该文件中。
+其它同一个程序的多余进程则自动退出。
+===================================
+73、glusterfs功能
+基本概念
+Brick，存储块，指可信主机池中由主机提供的用于存储的专用分区，是GlusterFS中的基本存储单元
+Volume，逻辑卷，一个逻辑卷是一组bricks的集合。
+Glusterd，后台管理进程，需要在存储集群中的每个节点上都要运行。
+Volfile，代指GlusterFS的各种配置文件，定义了服务端和客户端使用到的各种转换器以及卷和块的配置信息。
+GlusterFS共包含三部分，服务端、客户端和管理进程，每部分都有自己的配置文件。其中服务端和客户端的vol files放置在/var/lib/glusterd/vols/VOLNAME目录下，
+后台管理进程的配置文件在/etc/glusterfs/目录下
+
+部署的大致思路
+安装GlusterFS 软件包
+#yum install glusterfs-server
+启动GlusterFS 的后台管理进程：
+#service glusterd start 
+  
+先创建可信存储池------分区、格式化和挂接bricks---再创建glusterfs卷（逻辑存储卷）--- 启动逻辑卷gluster volume start gv0 ----最后把GlusterFS 卷挂接到一个客户端主机上去
+glusterfs卷是一个逻辑的概念，把物理层的存储块抽象成一个逻辑的卷概念，这是server端上的概念，-----个人理解
+在GlusterFS中逻辑卷（volume）是一组存储块（bricks）的集合，GlusterFS可以支持多种类型的逻辑卷，以实现不同的数据保护级别和存取性能。----官网原话
+配置可信主机池
+
+Gluster原生客户端是一个基于FUSE的运行在客户的用户空间中的客户端程序，也是推荐用于高并发访问逻辑存储卷数据的工具。
+
+可信主机池定义了可以作为Gluster节点使用的主机列表。你需要从中选出一个主要的（primary）节点。当然，这只是为了管理方便。
+实际上，你可以在Gluster集群中的任一个节点上执行管理命令，而能得到的效果是相同的。
+gluster peer probe (hostname of the other server in the cluster, or IP address if you don’t have DNS or /etc/hosts entries)
+注意：第一个节点是不能probe自己的，可以从已经被加入可信池的其它节点上probe第一个节点
+============================================
+GlusterFS 默认地把动态生成的配置数据存放于/var/lib/glusterd目录下，日志数据放于/var/log下，
+请确保它们所在的分区空间足够多，避免因磁盘满而导致GlusterFS 运行故障或服务当机
+
+GlusterFS 卷共有三种基本类型，分别是Distributed（分布存储）、Striped（将一个文件分成多个固定长度的数据，分布存放在所有存储块，
+相当于RAID0）、Replicated（镜像存储，相当于RAID1）。基于striped和replicated，结合使用distributed后，
+又可以扩展出分布式分片存储卷和分布式镜像存储卷两种新的类型。而后两种扩展类型并没有新的命令格式，
+仅是通过设置数据冗余份数和添加进逻辑卷的bricks数量来动态定义的
+
+5.1 创建一个GlusterFS Replicated卷
+
+在两台主机上：
+
+mkdir /data/brick1/gv0
+
+在两台主机中的任一个上面执行以下命令：
+
+#gluster volume create gv0 replica 2 server1:/data/brick1/gv0 server2:/data/brick1/gv0 #gluster volume start gv0
+
+查看存储卷的状态：
+
+#gluster volume info
+
+如果以上操作遇到报错，请查看/var/log/glusterfs下的日志，以定位和排错。
+
+5.2 创建Distributed逻辑卷
+
+# gluster volume create gv1 server1:/data server2:/data
+
+# gluster volume info
+
+#gluster volume start gv1
+
+5.3 创建Striped逻辑卷
+
+创建一个名字为gv2，包含两个存储块，使用TCP协议的Striped逻辑卷:
+
+# gluster volume create gv2 stripe 2 transport tcp server1:/data server2:/data
+
+# gluster volume info
+
+#gluster volume start gv2
+
+5.4 停止GlusterFS逻辑卷或删除GlusterFS逻辑卷
+
+# gluster volume stop gv0
+
+# gluster volume delete gv0
+
+ 
+5.5 与存储块brick相关的逻辑卷管理
+
+在gv0卷中增加一个存储块server3:/data：
+
+# gluster volume add-brick gv0 server3:/data
+
+# gluster volume rebalance gv0 start
+
+删除Brick:
+
+# gluster volume remove-brick gv0 server3:/data
+
+# gluster volume rebalance gv0 start
+==============================================
+查看存储池状态
+gluster peer status
+从存储池中移除指定服务器
+gluster peer detach server2
+查看存储卷的状态
+gluster volume info
+=============================
+74、iptable语法
+iptables的基本语法格式
+iptables [-t 表名] 命令选项 ［链名］ ［条件匹配］ ［-j 目标动作或跳转］
+说明：表名、链名用于指定iptables命令所操作的表和链，命令选项用于指定管理iptables规则的方式
+（比如：插入、增加、删除、查看等；条件匹配用于指定对符合什么样条件的数据包进行处理；
+目标动作或跳转用于指定数据包的处理方式（比如允许通过、拒绝、丢弃、跳转（Jump）给其它链处理。
+iptables命令的管理控制选项
+-A  在指定链的末尾添加（append）一条新的规则
+-D  删除（delete）指定链中的某一条规则，可以按规则序号和内容删除
+-I  在指定链中插入（insert）一条新的规则，默认在第一行添加
+-R  修改、替换（replace）指定链中的某一条规则，可以按规则序号和内容替换
+-L  列出（list）指定链中所有的规则进行查看
+-E  重命名用户定义的链，不改变链本身
+-F  清空（flush）
+-N  新建（new-chain）一条用户自己定义的规则链
+-X  删除指定表中用户自定义的规则链（delete-chain）
+-P  设置指定链的默认策略（policy）
+-Z 将所有表的所有链的字节和数据包计数器清零
+-n  使用数字形式（numeric）显示输出结果
+-v  查看规则表详细信息（verbose）的信息
+-V  查看版本(version)
+-h  获取帮助（help）
+
+防火墙处理数据包的四种方式
+ACCEPT 允许数据包通过
+DROP 直接丢弃数据包，不给任何回应信息
+REJECT 拒绝数据包通过，必要时会给数据发送端一个响应的信息。
+LOG在/var/log/messages文件中记录日志信息，然后将数据包传递给下一条规则
+
+举例：
+自定义链
+iptables -F
+iptables -X clean_in
+iptables -N clean_in
+iptables -A clean_in -d 192.168.49.65 -j RETURN
+
+iptables规则原理
+iptables的规则组成，又被称为四表五链：
+四张表 + 五个挂载点 + 规则<br><br>四张表：filter表、nat表、mangle表、raw表<br><br>
+五个挂载点：PRE_ROUTING、INPUT、OUTPUT、FORWARD、POST_ROUTING
+
+具体来说，就是iptables每一条允许/拒绝或转发等规则必须选择一个挂载点，关联一张表。
+
+规则代表了对数据包的具体操作，挂载点代表了操作的位置，表代表了作用的目的。
+===============================
+75、openstack的部署方式汇总
+
+个人使用方面
+DevStack
+该式主要通配置参数执行shell脚本安装OpenStack发环境
+Wiki: https://wiki.openstack.org/wiki/DevStack
+Rdo
+Rdo由Red Hat源款部署OpenStack工具同DevStack支持单节点节点部署Rdo支持CentOS系列操作系统需要注意该项目并属于OpenStack官社区项目
+手部署
+手部署all-in-one、multi-node、multi-HA-node环境
+
+企业、团体使用方面
+Puppet
+Puppet由Ruby语言编写应说Puppet进入OpenStack自化部署早期批项目历史算悠久目前跃发群体Red hat、 Mirantis、UnitedStack等
+https://wiki.openstack.org/wiki/Puppet
+Ansible
+Ansible
+新近现自化运维工具已Red 
+Hat收购基于Python发集合众运维工具（puppet、cfengine、chef、saltstack等）优点实现批量系统配
+置、批量程序部署、批量运行命令等功能面总结Puppet设计失另面改进设计比基于SSH式工作故需要
+控端安装客户端使OpenStack结合没历史包袱更加能够轻装阵未发展潜力容觑号称直寻找代Iaas
+SaltStack
+一款自化部署工具，基于Python发实现批量系统配置、批量程序部署、批量运行命令等功能，与Ansible挺相近同
+由于SaltStackmasterminion认证机制工作式需要控端安装minion客户端加其原自
+Ansible相比其优缺点便明显
+需要注意使用Saltstack部署OpenStack并属于OpenStack社区项目目前主要处于用户自研自用阶段据笔者所知目前内携程应该使用Saltstack部署OpenStack规模用户
+Kolla
+kolla项目起源于TripleO项目聚焦于使用docker容器部署OpenStack服务
+Fuel
+Fuel
+针OpenStack产环境目标（非源）设计端端键部署工具量采用Python、RubyJavaScript等语言其功能含盖自PXE式操作系统
+安装DHCP服务Orchestration服务 puppet 配置管理相关服务等外OpenStack关键业务健康检查log 实查看等非用服务
+
+========================
+76、ironic服务知识点
+Ironic是OpenStack中的裸机服务管理项目，最初由Mirantis主导开发，后来贡献给社区，目前已经是核心和技术成熟的项目。
+它使得在企业私有云中可以将特定的应用如数据库或者性能要求高的服务部署在被OpenStack管理的裸机当中，
+并且具有弹性的完整的生命周期管理。Sahara是OpenStack中的大数据处理服务，同时也是Mirantis主导开发，
+目前成为众多公司和厂商支持的核心项目。它的主要功能为利用OpenStack的IaaS层提供的计算和存储资源池服务创建管理大数据集群，
+实现集群计算能力按需提供，弹性扩展。在云上使用虚拟机来运行计算密集型的大数据集群引发了很多人对于计算和存储IO性能的忧虑，
+Mirantis拥有多个方案来解决性能问题，包括使用计算节点本地硬盘映射到虚拟机提供高性能虚拟机IO和结合Ironic与Sahara，
+Hadoop集群用于存储和分析海量的非结构化数据，为了获取最佳的性能与扩展性，Hadoop通常会部署于一个分布式的x86物理集群上。
+在OpenStack的众多项目中，Sahara作为大数据处理的项目，可以基于虚拟资源为用户部署和管理多个不同负载类型的Hadoop集群，
+实现大数据集群和大数据任务的生命周期管理。Sahara极大的方便了用户对于大数据集群的管理，
+但是基于虚拟资源部署Hadoop集群不可避免的存在一定的性能开销
+Ironic直接控制了物理机，Ironic节点的操作系统也直接访问真实的CPU和RAM，所以vCPU和vRAM参数在Ironic的环境中将不会被使用。
+只有磁盘根分区大小这个参数会被使用，Ironic将按照此参数重新划分物理服务器跟分区的大小。
+Ironic只支持flat网络，所以我们也需要在Neutron中进行相应的设置
+
+1、ironic是什么？
+Ironic为OpenStack的孵化项目之一，如果说OpenStack Nova管理的是虚拟机的生命周期，那么Ironic就是为了管理物理机的生命周期。
+它提供了一系列管理物理机的API接口，可以对“裸”操作系统的物理机进行管理，从物理机上架安装操作系统到物理机下架维修。
+我们可以像管理虚拟机一样地管理物理机，创建一个nova-compute物理节点不再需要人工部署，只需告诉Ironic，
+然后自动化地从镜像模板中加载操作系统到nova-compute安装完成即可。
+
+2、ironic出现的背景是什么？
+OpenStack管理虚拟机已经非常成熟，通过Nova我们可以快速自动化地创建虚拟机。但是在这之前需要搭建物理环境，
+需要人工地管理多台设备，OpenStack并没有提供物理环境的管理，我们依然需要解决这些基础环境的搭建问题，
+由此Ironic应运而生，解决物理机的添加、删除、电源管理、操作系统部署等问题。Ironic让OpenStack不仅停留在软件层面解决云计算问题。
+供应商可以对应自己的服务器开发Ironic插件。到目前为止，Ironic还处于实验阶段，它的目标是成为物理机管理的成熟解决方案。
+
+3、ironic的来源是什么？
+提到Ironic项目，就不得不说Nova项目中的baremetal驱动。baremetal是Nova中的后端驱动，它与libvirt驱动、XenAPI驱动、VMware驱动一样，
+只不过它用来管理没有虚拟化的硬件，主要通过PXE和IPMI进行控制管理。这是一个可插拔式的插件，有了它，
+配置和管理服务器的硬件就可以使用Heat或salt-cloud来完成。baremetal并不能直接使用，还需要额外的环境准备，
+如要预先配置IPMI、配置DHCP服务、开启PXE等。Grizzy版本中已经含有baremetal驱动，但这仍然是实验性质
+在Nova中，baremetal的概念最早是由USC/ISI和NTT-Docomo提出的。USC/ISI是研究超算的教育机构，而NTT-Docomo是一家日本公司。
+物理机与虚拟机管理有许多类似的地方，但又有一些差异。最早设想为通过Nova统一管理，但在开发中，
+物理机与虚拟机的差异导致baremetal不得不从Nova中剥离，因为：
+ baremetal驱动有自己的数据库，在Nova一个项目中有两套数据库不合适。
+ 物理机和虚拟机存储的数据信息不同，将两个有差异的实体放在同一个API中获取信息，在设计和使用上都比较别扭。
+ 物理机和虚拟机的操作有差异，如discovery、hardware RAID configuration、firmware updates、burn-in等操作。物理机和虚拟机不能简单同质化。
+ 社区经过讨论，决定将baremetal从Nova中剥离出来，命名为Ironic，主要用来实现对物理机的裸机管理。
+ 
+4、ironic的安装注意事项
+使用Neutron代替nova-network，Ironic只支持Neutron，ironic的访问端口是6385
+ironic的部署
+ironic 由下面几部分组成：
+1. ironic-api ----------- ironic 组件对外的 API
+2. ironic-conductor ----- ironic 真正的干活者
+3. ironicclient ---------
+4. database
+5. message queue
+
+5、验证过程
+在Ironic中，有node的概念，每个node代表着一个物理机，通过ironic node-list命令进行查看
+查看当前注册在Ironic里的node信息，当通过nova boot创建虚拟机时，会自动分配一个node和nova匹配，当虚拟机创建成功后，
+就可以通过ironic node-list命令行,查看节点信息
+
+关于Ironic里的一些概念
+
+    node：在真实环境中，和物理bare metal机器一一对应，在devstack中，和虚拟机一一对应
+    chassis：node的集合，目前在代码上没有chassis级别的功能实现，正常的话，chassis是要对应物理机架的。chassis和node是一对多的关系，代表着一组nodes
+    port：代表着物理机的网络端口
+    PXE (Preboot Execution Environment)：用于激活系统BIOS及网卡，从而从网络上引导启动计算机 (传统情况下是通过硬盘引导)。
+    DHCP：分配IP地址，并定位存有网络引导程序(NBP)服务器的位置。
+    NBP (Network Bootstrap Program)：负责将操作系统内核加载到内存中，以便操作系统可以通过网络来引导。
+    TFTP (Trivial File Transfer Protocol)：用于自动传输下载启动配置文件。
+    IPMI (Intelligent Platform Management Interface)：仅通过网络连接便可监督和管理硬件系统。
+关于Ironic里的一些服务
+ronic-api: 接收REST请求，送给ironic-conductor
+ironic-conductor: 接收来自ironic-API的请求，进行创建、更新、删除nodes， 通过IPMI、ssh开关电源，或者部署bare metal机器
+ironic-python-agent: 当一台bare metal服务启动时，如果从PXE启动，机器可以从远端拉取一个最小版的Linux内核，也可以拉取一个ramdisk，不过最小版的Linux内核功能较弱，
+如果是ramdisk的话，可以在上面安装各种服务（也可以配置RAID），其中可以包括ironic-python-agent。在ramdisk中的ironic-python-agent提供和ironic-conductor一样的服务。
+ironicclient: Ironic CLI
+在部署物理机时，使用的Ironic的driver是pxe_ipmitool。
+在Ironic中，有两种常用的driver，一个是pxe_ssh，一个是pxe_ipmitool
+=====================
+77、沃云制作新的yum源
+把openstack新制作的rpm 放在下列目录下
+ls var/www/html/wocloud/Packages/
+然后执行ls /var/www/html/wocloud这个路径下的rebuild_repo.sh
+最后在11上执行yum clean all 
+yum install openstack-ironic
+=======================
+78、当用ipmi的时候，有可能系统本身保护的原因，造成不能访问，这是可以通过所有程序的界面中，找到java程序，选中Java配置，把你的要访问的ipmi地址放到这个
+安全菜单里面，再重新登录就可以访问了
+========================
+79、Linux软连接命令行
+linux下的软链接类似于windows下的快捷方式
+ln -s a b 中的 a 就是源文件，b是链接文件名,其作用是当进入b目录，实际上是链接进入了a目录
+ln -s /home/gamestat    /gamestat
+如上面的示例，当我们执行命令   cd /gamestat/的时候  实际上是进入了 /home/gamestat/
+值得注意的是执行命令的时候,应该是a目录已经建立，目录b没有建立
+删除软链接 rm -rf  b  注意不是rm -rf  b/
+ln  a b 是建立硬链接
+======================
+79、nova flavor-create的时候，可以自己指定uuid值
+=====================
+80、tail 命令行详解
+tail 命令从指定点开始将文件写到标准输出.使用tail命令的-f选项可以方便的查阅正在改变的日志文件,
+tail -f filename会把filename里最尾部的内容显示在屏幕上,并且不但刷新,使你看到最新的文件内容.
+1．命令格式;
+tail[必要参数][选择参数][文件]  
+2．命令功能：
+用于显示指定文件末尾内容，不指定文件时，作为输入信息进行处理。常用查看日志文件。
+3．命令参数：
+-f 循环读取
+-q 不显示处理信息
+-v 显示详细的处理信息
+-c<数目> 显示的字节数
+-n<行数> 显示行数
+--pid=PID 与-f合用,表示在进程ID,PID死掉之后结束.
+-q, --quiet, --silent 从不输出给出文件名的首部
+-s, --sleep-interval=S 与-f合用,表示在每次反复的间隔休眠S秒 
+============================
+81、linux中chmod与chown两个命令详解
+chmod是用来设置文件夹和文件权限的，比如我们在VPS主机中文件不可读写，需要用来设置777权限；
+而chown是用来设置用户组的，比如授权某用户组，方便控制用户权限
+使用权限 : 所有使用者 
+使用方式 : chmod [-cfvR] [--help] [--version] mode file...
+说明 : Linux/Unix 的档案存取权限分为三级 : 档案拥有者、群组、其他。利用 chmod 可以藉
+以控制档案如何被他人所存取。
+mode : 权限设定字串，格式如下 : [ugoa...][[+-=][rwxX]...][,...]，其中u 表示该档案的拥有
+者，g 表示与该档案的拥有者属于同一个群体(group)者，o 表示其他以外的人，a 表示这三者皆是。
++ 表示增加权限、- 表示取消权限、= 表示唯一设定权限。
+r 表示可读取，w 表示可写入，x 表示可执行，X 表示只有当该档案是个子目录或者该档案已经被
+设定过为可执行。
+-c : 若该档案权限确实已经更改，才显示其更改动作
+-f : 若该档案权限无法被更改也不要显示错误讯息
+-v : 显示权限变更的详细资料
+-R : 对目前目录下的所有档案与子目录进行相同的权限变更(即以递回的方式逐个变更)
+--help : 显示辅助说明
+--version : 显示版本
+比如 ： chmod -R 777 /www/itbulu.com/wp-content/*
+代表设置上述文件夹下所有文件可读写
+指令名称 : chown 
+使用权限 : root
+
+使用方式 : chown [-cfhvR] [--help] [--version] user[:group] file...
+说明 : Linux/Unix 是多人多工作业系统，所有的档案皆有拥有者。利用 chown 可以将档案的拥
+有者加以改变。一般来说，这个指令只有是由系统管理者(root)所使用，一般使用者没有权限可以
+改变别人的档案拥有者，也没有权限可以自己的档案拥有者改设为别人。只有系统管理者(root)才
+有这样的权限。
+user : 新的档案拥有者的使用者 ID
+group : 新的档案拥有者的使用者群体(group)
+-c或-change：作用与-v相似，但只传回修改的部分
+-f或–quiet或–silent：不显示错误信息
+-h或–no-dereference：只对符号链接的文件做修改，而不更改其他任何相关文件
+-R或-recursive：递归处理，将指定目录下的所有文件及子目录一并处理
+-v或–verbose：显示指令执行过程
+–dereference：作用和-h刚好相反
+–help：显示在线说明
+–reference=<参考文件或目录>：把指定文件或目录的所有者与所属组，统统设置成和参考文件或目录的所有者与所属组相同
+–version：显示版本信息
+chown -R www:www /home/wwwroot/*
+解释：-R递归处理所有文件和文件夹，第一个www代表文件的拥有者名称，第二个www代表所属群组名称
+chown 修改文件和文件夹的用户和用户组属性
+
+1。要修改文件hh.c的所有者.修改为sakia的这个用户所有
+chown sakia hh.c
+这样就把hh.c的用户访问权限应用到sakia作为所有者
+2。将目录 /tmp/sco 这个目录的所有者和组改为sakia和组net
+chown -R sakia:net /tmp/sco
+=====================
+82、>和>>符号的区别
+Linux中经常会用到将内容输出到某文件当中，只需要在执行命令后面加上>或者>>号即可进入操作。
+大于号：将一条命令执行结果（标准输出，或者错误输出，本来都要打印到屏幕上面的）重定向其它输出设备（文件，打开文件操作符，或打印机等等）
+小于号：命令默认从键盘获得的输入，改成从文件，或者其它打开文件以及设备输入
+>> 是追加内容
+> 是覆盖原有内容
+bogon:Desktop wenxuechao$ echo 'abc' > test.txt  
+bogon:Desktop wenxuechao$ echo '123' >> test.txt  
+执行效果，
+第一句命令会在桌面创建个test.txt的文件，并且将abc写到文件中。
+第二句命令，会在文件下方，再次写入内容。	
+=======================
+83、glance支持的镜像格式
+Glance支持多种镜像的格式， 下面列出了目前已经支持的镜像格式：
+raw – 非结构化的镜像格式
+vhd – 一种通用的虚拟机磁盘格式， 可用于Vmware、Xen、Microsoft Virtual PC/Virtual Server/Hyper-V、VirtualBox等
+vmdk – Vmware的虚拟机磁盘格式， 同样也支持多种Hypervisor
+vdi – VirtualBox、QEMU等支持的虚拟机磁盘格式
+iso – 光盘存档格式
+qcow2 – 一种支持QEMU并且可以动态扩展的磁盘格式
+aki – Amazon Kernel 镜像
+ari – Amazon Ramdisk 镜像
+ami – Amazon 虚拟机镜像
+=========================
+84、登录ipmi的方式
+https://172.20.0.11/login.html，根据实际情况，替换ip地址
+========================
+85、ironic节点注册流程
+1、在裸机物理服务中，创建一个节点。在创建节点的时候，最低限度的配置，你必须要指定驱动程序的名字----------这一步是创建一个物理节点
+命令行如下：ironic node-create -d pxe_ipmitool
+示例如下：
+ironic node-create -d pxe_ipmitool
++--------------+--------------------------------------+
+| Property     | Value                                |
++--------------+--------------------------------------+
+| uuid         | dfc6189f-ad83-4261-9bda-b27258eb1987 |
+| driver_info  | {}                                   |
+| extra        | {}                                   |
+| driver       | pxe_ipmitool                         |
+| chassis_uuid |                                      |
+| properties   | {}                                   |
+| name         | None                                 |
++--------------+--------------------------------------+
+2、更新节点的driver_info参数信息，以至于裸机物理服务能够管理该节点。---------这一步把物理节点的一些连接信息传递进去，例如ipmi的连接地址，用户名，密码，启动的镜像等
+ironic node-update $NODE_UUID add \
+driver_info/ipmi_username=$USER \
+driver_info/ipmi_password=$PASS \
+driver_info/ipmi_address=$ADDRESS
+
+使用如下命令行来检测驱动的信息：driver-properties
+ironic driver-properties pxe_ipmitool 命令行
+driver-properties pxe_ipmitool驱动包含的参数项如下所示：
+ironic driver-properties pxe_ipmitool，
++----------------------+-------------------------------------------------------------------------------------------------------------+
+| Property             | Description                                                                                                 |
++----------------------+-------------------------------------------------------------------------------------------------------------+
+| ipmi_address         | IP address or hostname of the node. Required.                                                               |
+| ipmi_password        | password. Optional.                                                                                         |
+| ipmi_username        | username; default is NULL user. Optional.                                                                   |
+| ...                  | ...                                                                                                         |
+| deploy_kernel        | UUID (from Glance) of the deployment kernel. Required.                                                      |
+| deploy_ramdisk       | UUID (from Glance) of the ramdisk that is mounted at boot time. Required
+不同的驱动程序，需要的驱动属性是不一样的，具体能配置什么参数，可以查看代码
+需要注意的一些内容:
+如果ipmi不是以623端口号运行的话，那么必须通过指定ipmi_port的值,将端口号添加到driver_info中
+命令行如下所示：ironic node-update $NODE_UUID add driver_info/ipmi_port=$PORT_NUMBER
+对于你设置的所有driver_info参数 ，可以通过node-create 中多次的-i参数进行传递，他们的效果一样
+
+3、更新节点的属性，以匹配你以前创建的裸机物理模版------这一步是与物理主机的实际硬件信息添加到节点里面，方便与节点的查找工作
+命令行如下所示：
+ironic node-update $NODE_UUID add \
+properties/cpus=$CPU \
+properties/memory_mb=$RAM_MB \
+properties/local_gb=$DISK_GB \
+properties/cpu_arch=$ARCH
+备注：这些参数也可以通过node-create 命令行-p参数的多次传入进行设置
+
+4、如果你希望执行基于硬件能力的高级实例调度，那么你可以通过给每一个节点增加-------------这一步是可选功能，可以不做
+元素据，来暴露给Nova调度器。这项功能，你可以通过节点属性中的特殊成员进行添加。
+如下所示：
+ironic node-update $NODE_UUID add \
+properties/capabilities=key1:val1,key2:val2
+
+5、kilo版本之后，需要指定与node驱动程序，相对应的部署内核和ramdisk,---------------------这一步是指定部署的kernel和ramdisk
+命令行如下所示：
+ironic node-update $NODE_UUID add \
+driver_info/deploy_kernel=$DEPLOY_VMLINUZ_UUID \
+driver_info/deploy_ramdisk=$DEPLOY_INITRD_UUID
+
+6、需要把物理节点的mac地址，告知与裸机物理服务，用于实例启动期间的网络服务-------------这一步把物理机的MAC地址告知给裸机物理服务，用于部署物理机镜像
+命令行如下：
+ironic port-create -n $NODE_UUID -a $MAC_ADDRESS
+
+7、要检查Bare Metal服务是否具有节点驱动程序运行所需的最低信息，您可以对其进行验证------这个是对节点信息状态的一个初步验证
+ironic node-validate $NODE_UUID
+
+==================
+86、
+查看所有服务端口 netstat -a
+netstat -ap"查看所有服务端口和对应的程序名称
+====================
+87、ironic命令行
+ironic port-create
+ironic port-create -a <address> -n <node> [-l <key=value>]
+                          [--portgroup <portgroup>] [--pxe-enabled <boolean>]
+                          [-e <key=value>] [-u <uuid>]
+Create a new port.创建一个新的端口
+Optional arguments:
+-l <key=value>, --local-link-connection <key=value>
+Key/value metadata describing Local link connection information. Valid keys are switch_info, switch_id, port_id.Can be specified multiple times.
+Key/value元数据描述的是本地链路连接信息。有效的keys是交换机的信息，交换机的id,交换机的端口信息，。可以被多次指定
+--portgroup <portgroup>
+    UUID of the portgroup that this port belongs to.
+	这个端口所属的端口组的uuid
+--pxe-enabled <boolean>
+    Indicates whether this Port should be used when PXE booting this Node.
+	指示当pxe启动这个节点时，这个端口是否被使用
+-e <key=value>, --extra <key=value>
+    Record arbitrary key/value metadata. Can be specified multiple times.
+	记录任意键/值元数据。 可以多次指定
+-u <uuid>, --uuid <uuid>
+    UUID of the port.
+	端口的uuid
+Required arguments:要求的参数
+
+-a <address>, --address <address>
+    MAC address for this port.--------------这个端口的mac地址
+-n <node>, --node <node>, --node_uuid <node>
+    UUID of the node that this port belongs to. ---------这个端口属于哪个节点的uuid
+	
+ironic node-create创建一个节点
+ironic node-create [-c <chassis>] -d <driver> [-i <key=value>]
+                          [-p <key=value>] [-e <key=value>] [-u <uuid>]
+                          [-n <name>]
+                          [--network-interface <network_interface>]
+                          [--resource-class <resource_class>]	
+Register a new node with the Ironic service.使用ironic服务注册一个新节点
+Optional arguments:
+可选参数
+-c <chassis>, --chassis <chassis>
+    UUID of the chassis that this node belongs to.节点属于哪个框架
+-i <key=value>, --driver-info <key=value>驱动信息
+    Key/value pair used by the driver, such as out-of-band management credentials. Can be specified multiple times.
+	驱动使用的键值对。例如带外管理认证。可以多次使用
+-p <key=value>, --properties <key=value>特性
+    Key/value pair describing the physical characteristics of the node. 
+	This is exported to Nova and used by the scheduler. Can be specified multiple times.
+	这个键值对描述的是节点的物理特性
+	这个被传输给Nova，用于调度器使用。可以多次使用
+-e <key=value>, --extra <key=value>
+    Record arbitrary key/value metadata. Can be specified multiple times.
+	记录了任意的键值对元数据。可以多次使用
+-u <uuid>, --uuid <uuid>
+    Unique UUID for the node.
+	节点的唯一uuid
+-n <name>, --name <name>
+    Unique name for the node.
+	节点的唯一名字
+--network-interface <network_interface>
+    Network interface used for switching node to cleaning/provisioning networks.
+	被用于交换节点的网络接口
+--resource-class <resource_class>
+    Resource class for classifying or grouping nodes. Used, for example, to classify nodes in Nova's placement engine.
+
+Required arguments:必选参数
+
+-d <driver>, --driver <driver>
+    Driver used to control the node. 
+	控制节点的驱动程序
+=======================
+88、shell环境变量的常用命令
+使用env命令显示所有的环境变量
+$ env
+HOSTNAME=redbooks.safe.org
+PVM_RSH=/usr/bin/rsh
+Shell=/bin/bash
+TERM=xterm
+HISTSIZE=1000
+
+Linux的变量种类
+按变量的生存周期来划分，Linux变量可分为两类：
+1.1 永久的：需要修改配置文件，变量永久生效。
+1.2 临时的：使用export命令声明即可，变量在关闭shell时失效
+
+常用的环境变量
+PATH 决定了shell将到哪些目录中寻找命令或程序
+HOME 当前用户主目录
+HISTSIZE　历史记录数
+LOGNAME 当前用户的登录名
+HOSTNAME　指主机的名称
+SHELL 当前用户Shell类型
+LANGUGE 　语言相关的环境变量，多语言可以修改此环境变量
+MAIL　当前用户的邮件存放目录
+PS1　基本提示符，对于root用户是#，对于普通用户是$ 
+=====================
+89、显示路由route -n
+==================
+90、openstack底层配置网络的时候，network分配的物理vlan id在文件/etc/neutron/plugin.ini或者/etc/neutron/plugins/ml2/ml2_conf.ini中
+network_vlan_ranges配置项的值，这个值根据时间环境的部署进行实际查看
+=====================
+91、每创建一个网络，都会对应的创建一个dhcp namespace空间，这个DHCP 命令空间，为虚机提供ip分配服务。dhcp命令空间与虚机的位置，未必在一个
+节点上，不在同一个节点，只要他们之间是相同的，那么也可以正常分配ip.
+一个网络有两个dhcp命名空间，他们互为主备。正常情况下他们是可以相互通信的。不通的一个原因，是他们之间的分配的VLAN ID超过了实际有效的VLAN ID
+路由默认创建的时候，有一个默认的策略，一下创建两个，互为主备
+
+====================
+92、linux常用命令
+Linux系统中ping和arping命令的用法,这两个命令的使用也是检查与网络另一端主机连接性的基本方法
+arping命令用来向邻近的主机发生ARP REQUEST数据包。
+arping命令可以用来测试局域网中某个特定的IP地址是否已经被占用。
+我们知道局域网中如果IP地址有冲突可能会带来各种奇怪的网络问题，
+所以arping命令在手动设定IP地址时
+会非常有用。可以在设定IP地址之前，使用arping命令进行测试。
+利用arping命令执行的返回码来确认执行结果：
+如果返回结果为1，说明局域网中已经存在该IP地址了；
+如果返回结果为0，说明局域网中暂时无人使用该IP地址，那我们就可以使用了
+sh-# echo $?
+1
+ping 程序使用 ICMP 协议的强制回显请求数据报以使主机或网关发送一份 ICMP 的回显应答。
+arping主要干的活就是查看ip的MAC地址及IP占用的问题。
+=========================
+93、路由器的高可用状态
+查看HA虚拟路由器的状态 (View the state of Highly Available routers)
+Juno 版本中引入的一个重要功能是L3 HA 方案，它允许在多个网络节点上设置 active/active HA 模式的 neutron-l3-agent。
+这个方案基于 keepalived ，内部使用 VRRP 协议来组建高可靠的虚拟路由器组。
+根据设计，每个组只有一个活动的路由器负责网络转发，以及一个或者多个备用路由器，
+它们在等待活动路由器失效时接替它成为新的活动路由器。主/备路由器是被随机地部署到不同的网络节点上的，因此负载会在这些节点上被分摊。
+基于 Juno 方案的一个限制是，Neutron 没法报告 HA 路由器的状态，这会给问题定位和维护带来困难。
+Kilo 版本中，运维人员可以运行 neutron l3-agent-list-hosting-router <router_id> 命令来查看活动的路由器在那个网络节点上
+====================
+94、门户创建失败的情况下，初步定位--rms
+SELECT * from o_subscription a where a.SUBSCRIPTION_ID=180009402;------门户创建的所有订单信息，
+SELECT * from i_provision a where a.TRADE_ID=1701210170762113;------门户下发给底层的指令，暂存在这个表里面，9代表的状态是失败的
+删除门户订单状态
+UPDATE ucs_subscription SET SUB_SERVICE_STATUS = "deleted" WHERE SUBSCRIPTION_ID=180017761
+
+=======================
+95、 List Virtualrouter agents hosting a virtualrouter.列出托管虚拟路由器的虚拟路由器代理。
+neutron networkvirtualrouterbinding-list-----网络和虚拟路由绑定列表
+====================
+96、在门户出现乱码的问题，重新启动门户的server服务即可
+===================
+97、i_provision表的是，ps_status参数的各个值代表什么意思,rms里面状态码
+0 初始 
+1 发送RMQ指令,等待资源池返回
+2 返回成功 
+3 返回失败 
+4 正在扫描处理 
+5依赖的ipvs出现错误 
+6正在处理回填信息 
+7处理成功的回填成功 
+8回填失败 
+9处理失败的回填成功
+10同步接口回填扫单状态
+11发送rmq失败
+12订单送rmq进行deal处理失败
+=======================
+98、ping不通外网的情况下，定位的思路
+1、找到这个router namespace所在的节点，然后登陆上去看一下namespace中ip地址这些是否设置成功
+nova interface-list 8f2497e4-cd99-4b4d-bde4-6959490d8b37（主机uuid）查看主机的网络接口
+neutron networkvirtualrouterbinding-list | grep fbc818d2-cf02-4bbc-944b-1b187f7d2c09（网络id） 查找网络绑定的路由器
+neutron virtualrouter-agent-list-hosting-virtualrouter router-uuid---------查看路由器实际分配到哪个主机上
+neutron virtualrouterpublicip-list --virtualrouter_id=router-id查一下底层是否有绑定公网ip
+neutron networkvirtualrouterbinding-list --virtualrouter_id=router-id查绑定的network
+neutron virtualrouterpublicip-list | grep router-uuid------找公网ip的uuid
+
+2、查看公网的ip和公网的网管是否在同一个网段之内
+neutron virtualrouterpublicip-show uuid-----查公网网关ip，这个uuid是公网ip的uuid
+3、在公网ip和公网的网管在同一网段之内的情况下，还是ping不通公网网管，那就需要先确认下公网网管的ip地址是否真实的存在
+在路由器所在的节点上，进行抓包，看看这个网管是否真是的存在，如果arp广播寻找这个公网网管地址，那么就是这个公网网管不存在，
+路由器所在节点的调试窗口，打开两个，一个窗口上执行tcpdump -n -i bond_virt -ee命令进行抓包，一个窗口上执行ip netns xxx ping xxx命令
+发出ping命令
+bond_virt是网卡，vrouter所在节点的网卡，所有的报文都通过实际的物理网卡发出去的
+
+[root@RGCC01 ~(keystone_admin)]$ neutron networkvirtualrouterbinding-list
++--------------------------------------+--------------------------------------+--------------------------------------+
+| id                                   | virtualrouter_id                     | network_id                           |
++--------------------------------------+--------------------------------------+--------------------------------------+
+| 1617d2c0-4479-4aef-a187-fdac263580b4 | ea5bd644-3948-4d8d-83d0-826ba41ca896 | 9c1c484d-db1a-4f1c-a957-8c089a5a4364 |
+| 2c419800-eead-447b-a33e-7aa290b3afb0 | 0fa97b4d-7cfd-4379-a5fe-8533a12beabc | c7bb92ee-790f-4467-b2e7-695e160e1eb3 |
+| 98b82f3b-8067-4b97-9554-e225c1aac00a | ea5bd644-3948-4d8d-83d0-826ba41ca896 | 767a9644-a26a-4725-beef-2be79eb91440 |
+| b830afca-b9e3-4f91-abc5-d150ff78ad65 | ea5bd644-3948-4d8d-83d0-826ba41ca896 | 1078bfb7-be6b-48cc-ba6f-c8731358bc14 |
++--------------------------------------+--------------------------------------+--------------------------------------+
+You have mail in /var/spool/mail/root
+
+=========================
+99、转发规则的问题
+Linux系统虚拟机增加ssh的安全组，在添加有公网ip的路由器上，增加22端口的转发规则以后，可以通过公网ip加22端口，进行虚拟机啦
+=============================
+100、rms的定位
+/var/log/miner
+ps_param 里面的request_id在sentry.log里面查看，失败的条目，也在里面显示
+rest_info里面的request_id在patrol.log里面查看，这个只有code=0才在这里面显示
+底层创建虚机的时候，会生成一个随机密码，门户创建虚机的时候，设置的密码，会把底层的这个随机密码覆盖掉
+在门户上每创建一个虚机，都会需要你添加安全组的，虚机内ping不通外网，需要确定下，你的虚机是否添加了icmp安全组
+icmp安全组，没有特定的端口,上下行都需要添加
+============================
+101、查看系统中是否挂载了块，用命令行 fdisk -l这个命令，块需要格式化才可以使用
+============================
+102、cinder相关命令行学习
+cinder snapshot-create---对卷进行创建快照
+========================
+103、
+对虚机创建快照
+[root@RGCC02 ~(keystone_admin)]# nova -h | grep backup
+    backup                      Backup a server by creating a 'backup' type
+    backup-delete               Delete a special backup of a server.
+    backup-instance             Backup a server instance quickly.
+    backup-list                 Make a list of the special server.---------------
+    backup-rename               Modify a special backup's displayname.
+    backup-resume               Resume a special backup for server.
+    backup-show                 Get a special backup's detail information.
+    backup-to-image             Convert a special backup to image and upload
+nova backup 
+nova backup <server> <name> <backup-type> <rotation>
+Backup a server by creating a 'backup' type snapshot.
+Positional arguments:
+<server>
+    Name or ID of server.
+<name>
+    Name of the backup image.
+<backup-type>
+    The backup type, like "daily" or "weekly".
+<rotation>
+    Int parameter representing how many backups to keep around. －－－－－指定最多保存备份的数目
+
+nova backup-list $VM_UUID查看VM的快照ID，即backup_id
+nova backup-resume --backup-id $backup_id $VM_UUID.进行Nova VM的快照恢复
+OpenStack Backup的Snapshot其实就是与我们上传的镜像格式一致，所以肯定可以再次创建虚拟机，
+实质上glance存储镜像与快照只有一个属性的区别，其余都一样
+================
+104、nova image-create -----通过虚机的快照创建新的镜像
+nova image-create [--metadata <key=value>] [--show] [--poll]
+                         <server> <name>
+Create a new image by taking a snapshot of a running server.
+Positional arguments:
+<server>
+    Name or ID of server.
+<name>
+    Name of snapshot.
+Optional arguments:
+--metadata <key=value>
+    Record arbitrary key/value metadata to /meta_data.json on the metadata server. Can be specified multiple times.
+将任意键/值元数据记录到元数据服务器上的/meta_data.json中。 可以多次指定
+--show
+    Print image info.
+--poll
+    Report the snapshot progress and poll until image creation is complete. 
+
+nova interface-attach 给虚拟机挂载一块网卡
+Attach a network interface to a server.
+Positional arguments:
+<server>
+    Name or ID of server. 
+interface-detach 从虚拟机上卸载一块网卡
+Detach a network interface from a server.
+Positional arguments:
+<server>
+    Name or ID of server.
+<port_id>
+    Port ID. 
+	
+=================
+cinder snapshot-create 创建一个卷的快照
+Creates a snapshot.
+Positional arguments:
+<volume>Name or ID of volume to snapshot
+
+cinder list----列出所有的卷
+Lists all volumes
+
+cinder backup-create----做一个卷的备份
+Creates a volume backup
+Positional arguments:
+<volume>Name or ID of volume to backup.
+
+cinder backup-list----列出所有卷的备份
+Lists all backups.
+
+cinder create------创建卷的大小
+Creates a volume
+Positional arguments:
+<size>Size of volume, in GiBs. (Required unless snapshot-id /source-volid is specified).
+
+cinder type-list-----列出卷的类型
+Lists available 'volume types'. (Only admin and tenant users will see private types)
+==================
+105、一点小感悟，在门户创建块的时候，在底层相同效果的命令行是cinder create命令行，
+在门户对块做快照时，使用的命令行是cinder snapshot-create，
+在底层创建的块，和快照，不会同步到门户上，因为，门户在创建块的时候，会携带相应的租户信息，
+==================
+106、对一个命令怎么使用，及这个命令需要那些必备参数，使用
+Nova　help backup类似的形式
+================
+107、
+/var/log/miner
+ps_param 里面的request_id在sentry.log里面查看，失败的条目，也在里面显示
+rest_info里面的request_id在patrol.log里面查看，这个只有code=0才在这里面显示
+底层创建虚机的时候，会生成一个随机密码，门户创建虚机的时候，设置的密码，会把底层的这个随机密码覆盖掉
+查看队列是否有数据
+rabbitmqctl list_queues
+source /root/keystonerc_admin 进入管理源权限
+netstat -an 查看监听的端口
+===================
+108、查询系统具有多少个逻辑核：cat /proc/cpuinfo | grep "processor" | wc -l
+==================
+109、openstack Nova aggregate 和zone基本概念
+aggregate 聚集体
+availability 有效; 有益; 可利用性; 可得到的东西（或人）
+Zone 地带; 区域，范围; 地区
+openstack nova支持三种划分的方式:Region区域，Zone空间和Aggregate分组，其中Region是指一个地区或者地域，
+如可以将中国划分为:华南地区，华中地区，东北地区，西南地区；Zone则可以按照机房的形式来划分，
+如北京兆维机房为一个Zone，北京鲁谷机房为另外一个Zone；
+Aggreate粒度则更细，如按照同个机房中的不同机柜来划分。
+
+Region，更像是一个地理上的概念，每个region有自己独立的endpoint(就是自己独立的一套openstack 各组件服务)，regions之间完全隔离，
+但是多个regions之间共享同一个keystone和dashboard，region的设计更多侧重地理位置的概念，
+用户可以选择离自己更近的region来部署自己的服务
+Region
+ 顾名思义，Region 直译过来就是区域，地域的概念，而事实上，AWS 按地域(国家或者城市)设置一个 Region，
+ 每个 Region 下有多个 Availability Zone。Openstack 同样支持 Region 的概念，支持全球化部署，
+ 比如为了降低网络延时，用户可以选择特定的 Region 来部署服务。各个 Region 之间的计算资源、网络资源、存储资源都是独立的，
+ 但所有 Region 共享账户用户信息，因为 Keystone 是实现 openstack 租户用户管理和认证的功能的组件，所以 Keystone 全局唯一，
+ 所有 Region 共享一个 Keystone，Keystone endpoint 中存储了访问各个 Region 的 URL。
+Cell
+Cell 概念的引入，是为了扩充单个 Region 下的集群规模，主要解决 AMQP 和 Database 的性能瓶颈，
+每个 Region 下的 openstack 集群都有自己的消息中间件和数据库，当计算节点达到一定规模(和IBM，easystack，华为等交流的数据是300~500)，
+消息中间件就成为了扩展计算节点的性能瓶颈。Cell 的引入就是为了解决单个 Region 的规模问题，每个 Region 下可以有多个 Cell，
+每个 Cell 维护自己的数据库和消息中间件，所有 Cell 共享本 Region 下的 nova-api，共享全局唯一的 Keystone
+
+Zone，即 Availability Zone，AZ可以简单理解为一组节点（即一堆计算节点）的集合，这组节点具有独立的电力供应设备，
+比如一个个独立供电的机房，一个个独立供电的机架都可以被划分成AZ。（或者是多个具有相互独立供电的机架或者机房或机柜），
+所以，AZ主要是通过冗余来解决可用性问题，
+Zone的目的主要是，保障用户在创建instance的时候可以选择创建到哪些AZ中，以保证instance的可用性,选择不同的az是为了防止所有的instance一起挂掉
+用户在创建虚机的时候，可以选择在哪个zone里面创建虚拟机即门户上可用域的概念，
+用户只要创建虚机即可，不用管我这个虚机会落在哪台计算节点上
+划分az是为了提高容灾性和提供廉价的隔离服务
+当新建虚拟机，调度器将会根据nova-compute设置的az来调度
+ az是一个面向终端客户的概念和能力，而host aggregate是管理员用来根据硬件资源的某一属性来对硬件进行划分的功能，只对管理员可见
+Host Aggregate，（主机集合）　AZ是一个面向用户的概念和能力，而host aggregate是管理员用来根据硬件资源的某一属性来对硬件进行划分的功能，
+只对管理员可见，主要用来给nova-scheduler通过某一属性来进行instance的调度。其主要功能就是实现根据某一属性来划分物理机，
+比如按照地理位置，使用固态硬盘的机器，内存超过32G的机器，使用存储介质的类型等，根据这些指标来构成一个host group
+
+Aggreate需要配合Zone一起使用，否则没法实现
+创建Zone和Aggreate
+[root@RGCC001 ~(keystone_admin)]$ nova help aggregate-create
+usage: nova aggregate-create <name> [<availability-zone>]
+Create a new aggregate with the specified details.
+Positional arguments:
+  <name>               Name of aggregate.
+  <availability-zone>  The availability zone of the aggregate (optional).
+查看aggreate列表 nova aggregate-list
+将compute节点加入到Aggreate内
+[root@RGCC001 ~(keystone_admin)]$ nova help aggregate-add-host
+usage: nova aggregate-add-host <aggregate> <host>
+Add the host to the specified aggregate.
+Positional arguments:
+  <aggregate>  Name or ID of aggregate.
+  <host>       The host to add to the aggregate
+查看aggreate的详细信息 nova aggregate-details 显示添加到aggregate里面的物理节点
+.nova list查看划分情况  nova service-list
+
+aggregate的分组带来的好处是，nova支持availablily zone级别的调度，即创建vm的时候，能够指定zone，
+指定zone之后，instance将会在指定的zone中选择合适的compute nodes来启动虚拟机，openstack默认安装完之后，只有一个nova的zone
+（初步感觉是先创建可用域zone,然后呢创建aggregate,这两者关联，然后在aggregate上添加物理节点，组成可用域zone的具体内容）
+az是用户可见的，用户手动的来指定vm运行在哪些host上，即用户可见；Host aggregate是一种更智能的方式，是调度器可见的，影响调度策略的一个表达式
+aggreate的删除
+nova aggregate-list            #获取aggregate的ID号码
+nova aggregate-remove-host #将主机从aggregate中删除，其他的compute节点，相同的方法执行
+nova aggregate-delete  将aggregate删除
+aggregate-set-metadata Update the metadata associated with the aggregate.  #设置分组元数据信息
+aggregate-update    Update the aggregate's name and optionally           #修改分组名字
+查询主机与服务所属的zone
+#nova host-list
+#nova service-list
+aggregate调度
+通过在 Instance Flavor 中设置相关属性，由 nova-scheduler 调度根据该调度策略调度到满足该属性的的 Host Aggregates Zones 中。
+配置 nova.conf 
+scheduler_default_filters=AggregateInstanceExtraSpecsFilter,AvailabilityZoneFilter,RamFilter,ComputeFilter
+设置aggregate  Metadata 属性
+nova aggregate-set-metadata
+=======================
+在G版以前，当我们用nova-manage service list 查看nova服务启动的状态的时候，即看status是笑脸还是XX，其实是通过一个循环任务report_state，
+循环地向数据库service表中写入信息，比如一个计数report_count以及更新该记录的时间。而判断该服务状态时，
+就会读取Service表，看当前时刻与该服务上次更新的时间的差值是否在允许的范围内（配置项service_down_time），
+如果超出了service_down_time，就认为该服务状态异常。所以，总结一下，一个服务状态是XXX的原因，要么是该服务出现了异常，要么是时间不同步导致。
+需要注意的是，在report_state中，除了report_count，还有一个更新的字段：availability_zone。
+该字段来源于配置项node_availability_zone。举个例子，一个nova-compute服务，
+它的Availability Zone就依赖于配置文件中的node_availability_zone配置项。同时，一个nova-compute仅属于一个AZ。
+还有一点要注意，我们创建aggregate时也可以指定Availability Zone，然后向aggregate中添加主机时，要求主机的zone与aggregate的zone一致。
+因此，总结如下：每一个computer node的属于哪一个AZ，是通过nova.conf中的node_availability_zone配置项来指定，
+一个nova-compute仅属于一个AZ，并且创建Aggregate指定的AZ，在向其添加host的时候，应与host原属的AZ与其一致。
+但是从G版开始以后的版本，比如我现在所用的H版里头，nova.conf里面就没有node_availability_zone的配置字段，
+虽然还留有一个default_availability_zone的配置项，但仅在nova-api节点起作用。
+因此在这个时候，如果想用户起虚拟机的时候能指定AZ，或将某一个compute node指定成一个AZ，该如何操作了？
+G版中对服务的管理增加了很多方式，可以是老的更新数据的方式（如果节点不多，可以使用这种，不会对数据库造成大的压力），
+但如果节点较多，使用数据库的方式就不太明智了，此时可以选择效率较高的memcached或者zookeeper。
+于是，Service表中也不再保存availability_zone字段，配置项node_availability_zone也不再使用
+G版中，默认情况下，对Nova服务分为两类，一类是controller节点的服务进程，如nova-api, nova-scheduler, nova-conductor等；
+另一类是计算节点进程，nova-compute。对于第一类服务，默认的zone是配置项internal_service_availability_zone，
+而nova-compute所属的zone由配置项default_availability_zone决定。（这两个配置项仅在nova-api的节点起作用，horizon界面才会刷新）
+管理员通过配置的方式管理zone不太合适，不够灵活，所以在G版中将这一方式修改。就改用nova  aggregate-create 命令，在创建一个aggregate的同时，
+指定一个AZ。
+因此创建一个aggregate后，同时把它作为一个zone，此时aggregate=zone。因为大家知道，aggregate是管理员可见，普通用户不可见的对象，
+那么这个改变，就可以使普通用户能够通过使用zone的方式来使用aggregate。
+创建完aggregate之后，向aggregate里加主机时，该主机就自动属于aggregate表示的zone。
+在G版之后，可以认为aggregate在操作层面与AZ融合在一起了，但同时又不影响aggregate与flavor的配合使用，因为这是两个调度层面。
+同时又要注意，一个主机可以加入多个aggregate中，所以G版中一个主机可以同时属于多个Availability Zone，这一点也与之前的版本不同。
+对上面这段话的一个充分验证
+已有的az
+[root@RGCC02 ~(keystone_admin)]# nova aggregate-list 
++----+------------+------------------------+
+| Id | Name       | Availability Zone      |
++----+------------+------------------------+
+| 13 | aggregate3 | az03.cell02.langfang   |
+| 16 | aggregate2 | az02.cell01.langfang   |
+| 20 | aggregate4 | ironic.cell01.langfang |
++----+------------+------------------------+
+[root@RGCC02 ~(keystone_admin)]# 
+==================
+创建一个新的aggregate之后
+[root@RGCC02 ~(keystone_admin)]# nova aggregate-create test ckf4879
++----+------+-------------------+-------+-----------------------------+
+| Id | Name | Availability Zone | Hosts | Metadata                    |
++----+------+-------------------+-------+-----------------------------+
+| 22 | test | ckf4879           |       | 'availability_zone=ckf4879' |
++----+------+-------------------+-------+-----------------------------+
+You have new mail in /var/spool/mail/root
+[root@RGCC02 ~(keystone_admin)]# 
+[root@RGCC02 ~(keystone_admin)]# nova aggregate-list 
++----+------------+------------------------+
+| Id | Name       | Availability Zone      |
++----+------------+------------------------+
+| 13 | aggregate3 | az03.cell02.langfang   |
+| 16 | aggregate2 | az02.cell01.langfang   |
+| 20 | aggregate4 | ironic.cell01.langfang |
+| 22 | test       | ckf4879                |
++----+------------+------------------------+
+[root@RGCC02 ~(keystone_admin)]# 
+
+[root@RGCC02 ~(keystone_admin)]# nova aggregate-details 22
++----+------+-------------------+-------+-----------------------------+
+| Id | Name | Availability Zone | Hosts | Metadata                    |
++----+------+-------------------+-------+-----------------------------+
+| 22 | test | ckf4879           |       | 'availability_zone=ckf4879' |
++----+------+-------------------+-------+-----------------------------+
+[root@RGCC02 ~(keystone_admin)]# 
+删除之后
+[root@RGCC02 ~(keystone_admin)]# nova aggregate-delete 22
+Aggregate 22 has been successfully deleted.
+[root@RGCC02 ~(keystone_admin)]# nova aggregate-list 
++----+------------+------------------------+
+| Id | Name       | Availability Zone      |
++----+------------+------------------------+
+| 13 | aggregate3 | az03.cell02.langfang   |
+| 16 | aggregate2 | az02.cell01.langfang   |
+| 20 | aggregate4 | ironic.cell01.langfang |
++----+------------+------------------------+
+grizzly及之后版本基于aggregate可以了两个功能：availability zone和特殊调度
+在grizzly版本之后，AZ都是基于aggregate实现的
+此外每一个aggregate还可以配置不同的metadata(AZ也是一个metadata) 如上图中所示，aggregateA被标记了ssd：true，表示这些host支持SSD，
+如果在flavor的extra-specs中配置了ssd：true，那么调度时，仅有这个aggregate的宿主机会通过过滤器。
+换言之，此flavor创建的虚拟机只能落在此aggregate上
+flavor-key   Set or unset extra_spec for a flavor.命令行
+
+从部署层次来说，它们有以下关系
+Region > Cell > Availabiliy Zone > Host Aggregates
+==================
+110、nova-manage service list 查看nova服务启动的状态
+==================
+111、rms升级的步骤
+1、备份下miner的库
+mysqldump -uminer -pminer miner >miner.sql
+数据库只备份一次就可以
+2、升级软件包
+rpm -U升级软件包
+rpm -U(upgrade)实现软件包升级功能
+rpm -U miner-2017.1.2-20170426.el7.noarch.rpm
+rpm -U python-miner-2017.1.2-20170426.el7.noarch.rpm
+这两个安装包无先后之分
+3、同步更新数据库
+miner-manage db sync
+miner-manage db sync_monitor_data
+在第一个节点上，输入同步数据库命令，三个节点的数据库，就都相互同步了
+4、重启服务
+systemctl restart miner-api
+systemctl restart miner-sentry 
+systemctl restart miner-patrol 
+systemctl restart miner-beat
+除了beat应该只在第一个节点重启， 其他三个在管理节点都要重启
+ 
+=================
+112、cell概念的理解
+cell之间是相互隔离却独立的，不同cell之间，可以使用不同的存储类型，cell的作用是为了云计算扩展，为了防止因为随着虚机的增加，
+管理节点上负载越来越严重
+每个cell有自己独立的一套消息队列和数据库，不同的cell之间，通过nova-cell服务来相互交互各自的信息，
+这样管理节点才能知道各个cell里面各个虚机的情况（验证一下），每个cell里面运行着自己的除nova-api 外的openstack服务，
+如cinder,调度等
+在沃云环境中,cell节点是一个单独的节点
+Nova Cell 模块以树型结构为基础，主要包括 API-Cell（根 Cell）与 Child-Cell 两种形式。API-Cell 运行 nova-api 服务，
+每个 Child-Cell 运行除 nova-api 外的所有 nova-*服务，且每个 Child-Cell 运行自己的消息队列、数据库及 nova-cells 服务。
+Nova Cell 模块简介
+
+Nova Cell 模块是 OpenStack 在 G Release 中提出的一个新的模块，允许用户在不影响现有 OpenStack 云环境的前提下，增强横向扩展、大规模部署能力。
+当 Nova Cell 模块启用后，OpenStack 云环境被分成多个子 Cell，并且是以在原 OpenStack 云环境中添加子 Cell 的方式，拓展云环境，
+以减少对原云环境的影响。 每个 Cell 都运行着 nova-cells 服务，用于与其他 Cell 通信。目前为止，Cells 之间的通信只支持 RPC 服务。
+Nova Cell 模块中 Cells 的调度与 Compute Host 节点的调度是相互分离的。nova-cells 负责为特定操作选取合适的 Cell，
+并将 request 发送至此 Cell 的 nova-cells 服务进行处理，Target Child Cell 会对请求进行处理，并发送至 Cell 的 Compute Host 调度进行处理。 
+Nova Cell 模块基础架构
+Nova Cell 模块被设计成树型结构
+
+Nova Cell 模块中主要组件介绍
+Nova Cell 数据库表结构
+目前，Nova Cell 模块隶属于 Opnstack Nova 项目，默认配置下，Nova Cell 不被激活。在 OpenStack Compute 服务安装后，
+进行相应数据库创建的过程中，会在数据库"nova"中创建对应的表项"cells"，里面包含 Cell 模块需要存储在数据库中的信息
+通过show columns from cells,可以查看cells表的各个字段
+ 其中 transport_url 字段存储 Neighbor Cell 的 rabbitmq 的相关信息，用于 Cells 之间通信，"transport_url"字段的格式如下：
+
+scheme://username:password@hostname:port/virtual_host
+例如沃云环境
+MariaDB [nova]> select * from cells;
++---------------------+------------+------------+----+---------+---------------+--------------+-------------+-----------+---------+------------------------------------------------------------------------------+
+| created_at          | updated_at | deleted_at | id | api_url | weight_offset | weight_scale | name        | is_parent | deleted | transport_url                                                                |
++---------------------+------------+------------+----+---------+---------------+--------------+-------------+-----------+---------+------------------------------------------------------------------------------+
+| 2016-01-22 11:38:39 | NULL       | NULL       |  4 | NULL    |             1 |            1 | CHILDCELL01 |         0 |       0 | rabbit://wocloud:wocloud@172.18.5.24:5672,wocloud:wocloud@172.18.5.25:5672// |
++---------------------+------------+------------+----+---------+---------------+--------------+-------------+-----------+---------+------------------------------------------------------------------------------+
+1 row in set (0.00 sec)
+
+Cells 之间的通信主要通过传递 message 实现的，Parent Cell 会将用户的请求合成一个含有指定 Child Cell 的 message。含有请求的 message 会在 Children Cells 中间进行路由，
+直至指定的 Cell 节点进行处理。目前 Nova Cell 使用 RabbitMQ 作为 Message Broker，消息队列可以通过 /etc/nova/nova.conf
+ 中的字段 rpc_driver_queue_base 进行配置，默认为"cells.intercell"。
+
+Message 主要包含三种类型：TargetedMessage、BroadcastMessage、ResponseMessage，分别用于对不同类型的 message 进行创建、转发及处理。
+
+在 nova-cells 模块中，_BaseMessage 作为所有消息的基类，定义了 message 的基本数据结构，并包含处理消息所用到的基本方法。MessageRunner 主要完成消息创建以及消息处理的逻辑实现。
+
+当 nova-cells 服务启动时，会启动三个 RPC Consumers，用于处理不同种类的 messages，每一个 message 中会含有一个 unique ID 以及此 message 的全部路由信息，Message 会根据路由信息以及 message 所包含的 topic 决定是否处理此 message 还是路由出去。Topic 的格式如下：
+
+rpc_driver_queue_base.msg_type
+Nova Cell 模块中各主要类的功能介绍
+
+CellStateManager 类主要用于管理一个具体 Cell 的信息，用于获取或更新 Cell 的相关信息，每一个 Cell 均拥有一个 CellState 实例用于保存 Cell 的信息；
+
+CellsManager 类主要定义了 RPC 的各类方法供本地 Cell 进行调用，本地 Cell 可以通过调用 CellsManager 中提供的方法，借助 MessageRunner 将请求送至其他 Cells；
+
+BaseCellsDriver 类主要用于各 Cells 间的通信，合成并发送一个 message 到其他 Cell，以及启动 Consumers 线程，完成对不同 messages 的处理；
+
+CellsScheduler 类主要用于将不同的用户请求调度至指定的 Cell；当用于需要创建一个 VM，CellsScheduler 会调用_schedule_build_to_cells()，选择一个合适的 cell 来运行创建命令； 
+
+Nova Cell 环境配置与搭建
+Nova Cell 模块配置
+Nova Cell 模块的所有配置信息都包含在配置文件"nova.conf"中，可以通过更改"[cells]"部分下面的属性信息进行配置，默认情况下，Nova Cell 功能是被禁止的。
+
+Cells 主要配置项如下：
+
+[cells]
+	enable ：是否启用 nova cell 模块，默认是 False
+	name : Cell 的名称，用于识别每个 Cell，必须保证此命名的唯一性
+	driver : 用于 Cells 之间的通信，默认是 nova.cells.rpc_driver.CellsRPCDriver
+	scheduler : Cells 的调度服务，默认是 nova.cells.scheduler.CellsScheduler
+	topic : Cells 节点监听的 Topic，默认是 cells
+	manager : Cells 节点的 Manager，默认是 nova.cells.manager.CellsManager	 
+	cell_type : 当前 Cell 的类型，分为 api 或者 compute
+	rpc_driver_queue_base : Cells 默认的 Queue，默认是 cells.intercell
+	capabilities : 用于定义 Cell 的 capabilities，以 Key/Value 的形式存储
+	instance_update_num_instance : 每个同步周期能够同步的 instance 的数目
+	instance_updated_at_threshold : 同步 Parent Cell 与 Child Cell 之间 instance 信息的周期时间
+	max_hop_count : Message 在 Cells 之间路由的最大数目，默认是 10
+
+Parent Cell 配置实例如下：
+
+	[DEFAULT]
+    compute_api_class = nova.compute.cells_api.ComputeCellsAPI
+	
+    [cells]
+    enable = True
+    name = $parent_cell_name
+    driver=nova.cells.rpc_driver.CellsRPCDriver
+    scheduler=nova.cells.scheduler.CellsScheduler
+    topic=cells
+    manager=nova.cells.manager.CellsManager
+    cell_type = api
+    rpc_driver_queue_base=cells.intercell
+    scheduler_weight_classes=nova.cells.weights.all_weighers
+
+Child Cell 配置实例如下：
+
+	[DEFAULT]
+	quota_driver = nova.quota.NoopQuotaDriver
+	[cells]
+	enable = True
+	name = $child_test1_name
+	driver=nova.cells.rpc_driver.CellsRPCDriver
+	scheduler=nova.cells.scheduler.CellsScheduler
+	topic=cells
+	manager=nova.cells.manager.CellsManager
+	cell_type = compute
+	rpc_driver_queue_base=cells.intercell
+	scheduler_weight_classes=nova.cells.weights.all_weighers
+
+环境配置完成后，启动 Nova Cell 服务及 Nova 相关服务；
+（在沃云生成环境中，多个cell共用了一套消息队列和数据库，只在第一个节点启用nova-cell服务就可以，他会在各个cell之间进行消息传送，为什么它不按照
+官网上标准的结构进行部署？）
+=============
+[root@RGCC001 ~(keystone_admin)]$ nova help service-list
+usage: nova service-list [--host <hostname>] [--binary <binary>]
+
+Show a list of all running services. Filter by host & binary.
+
+Optional arguments:
+  --host <hostname>  Name of host.
+  --binary <binary>  Service binary.
+在 Nova Cell 服务启动后，需要对每个 Cell 进行配置，将父节点及子节点的信息注册到相应的 Cell 中，确保父节点可以知道自己的直接子节点，子节点可以知道自己的父节点，便于双方的通信。注册在数据库中的信息主要是 Message Broker（这里为 RabbitMQ）的相关链接信息，主要参数如下：
+    --name=<name>    注册 Cell 的名称  
+	--cell_type=<api|compute>   注册 Cell 是 API Cell 还是 Child Cell
+    --username=<username>    注册 Cell 的 RabbitMQ 的用户名
+    --password=<password>    注册 Cell 的 RabbitMQ 的密码
+    --hostname=<hostname>    注册 Cell 的 RabbitMQ 的 Host 地址
+    --port=<number>    注册 Cell 的 RabbitMQ 的端口号码
+	--virtual_host=<virtual_host>    注册 Cell 的 RabbitMQ 的 Virtual-Host 的路径 
+
+nova-manage cell
+usage: nova-manage cell [-h] {create,delete,list} ...
+Positional arguments:
+{create,delete,list}
+Optional arguments:
+-h, --helpshow this help message and exit
+
+Parent Cell 中运行命令实例如下
+nova-manage cell create --name=$child_cell_name --cell_type=compute --username=$child_cell_rabbitmq_user
+--password=$child_cell_rabbitmq_pass --hostname=$child_cell_rabbitmq_host 
+--port=$child_cell_rabbitmq_port --virtual_host=$child_cell_rabbitmq_virtualhost 
+--woffset=1.0 --wscale=1.0
+原生的openstack命令
+nova-manage cell create --name=$child_cell_name --cell_type=child --username=$child_cell_rabbitmq_user
+ --password=$child_cell_rabbitmq_pass --hostname=$child_cell_rabbitmq_host 
+--port=$child_cell_rabbitmq_port --virtual_host=$child_cell_rabbitmq_virtualhost 
+--woffset=1.0 --wscale=1.0
+Child Cell 中运行命令实例如下
+nova-manage cell create --name=$parent_cell_name --cell_type=api --username=$parent_cell_rabbitmq_user
+--password=$parent_cell_rabbitmq_pass --hostname=$parent_cell_rabbitmq_host 
+--port=$parent_cell_rabbitmq_port --virtual_host=$parent_cell_rabbitmq_virtualhost 
+--woffset=1.0 --wscale=1.0
+原生的openstack命令
+nova-manage cell create --name=$parent_cell_name --cell_type=parent --username=$parent_cell_rabbitmq_user
+ --password=$parent_cell_rabbitmq_pass --hostname=$parent_cell_rabbitmq_host 
+--port=$parent_cell_rabbitmq_port --virtual_host=$parent_cell_rabbitmq_virtualhost 
+--woffset=1.0 --wscale=1.0
+注册成功后，可以分别在 Cell 端运行命令，查看注册信息，运行命令如下
+nova-manage cell list
+验证 Cell 组件是否正常启动，可以通过在 Parent Cell 中运行如下命令：
+nova service-list
+正常运行时，API Cell 端的服务列表中，会包含所有 Child Cell 的服务信息。当所有 Cell 服务正常运行后，
+便可以进行创建 instance 等一系列操作，API Cell 负责执行用户指令，并将指令路由到指定的 Child Cell 进行处理。 
+在每个cell中配置数据库
+
+在使用cell服务之前，每个cell中还需要对数据库进行配置。因为APIcell需要知道关于它直系孩子的信息，且子cell们需要知道关于它们父母cell的信息。
+应用命令行nova-manage cell create来为每个cell添加相关信息到数据库之中。
+$ nova-manage cell create -h----查看这个命令的使用方式
+=========================
+113、rabbitmq知识点
+在rabbitmq服务器节点上，执行rabbitmqctl相应的命令行
+执行rabbitmq命令行工具（rabbitmqctl ）：
+rabbitmqctl -q status       //打印了一些rabbitmq服务状态信息，包括内存，硬盘，和使用erlong的版本信息
+rabbitmqctl list_queues     //查看所有队列消息
+
+通过web界面方式查看rabbitmq信息状态
+1、官方提供的一个web管理工具（rabbitmq_management）
+http://www.rabbitmq.com/management.html
+2、安装了Rabbitmq后，默认也安装了该管理工具，执行命令即可启动
+rabbitmq-plugins enable rabbitmq_management（先定位到rabbitmq安装目录）
+3、启动后，直接在浏览器地址输入：http://rabbitmq安装的节点ip:15672/   账号密码都是：guest（默认）
+在沃云环境中是wocloud 帐号和wocloud密码
+每个服务一般会有一个单独的消息队列来接受它的消息，因此可以看到多个队列
+=====================
+114、tcpdump命令使用
+tcpdump 
+如果不指定网卡，默认tcpdump只会监视第一个网络接口，一般是eth0，下面的例子都没有指定网络接口。　
+输出信息含义
+基本上tcpdump总的的输出格式为：系统时间 来源主机.端口 > 目标主机.端口 数据包参数 
+tcpdump [ -AdDeflLnNOpqRStuUvxX ] [ -c count ]
+           [ -C file_size ] [ -F file ]
+           [ -i interface ] [ -m module ] [ -M secret ]
+           [ -r file ] [ -s snaplen ] [ -T type ] [ -w file ]
+           [ -W filecount ]
+           [ -E spi@ipaddr algo:secret,...  ]
+           [ -y datalinktype ] [ -Z user ]
+           [ expression ]
+常用参数说明
+-e  每行的打印输出中将包括数据包的数据链路层头部信息
+-i  interface
+ 指定tcpdump 需要监听的接口.  如果没有指定, tcpdump 会从系统接口列表中搜寻编号最小的已配置好的接口(不包括 loopback 接口).一但找到第一个符合条件的接口, 搜寻马上结束.
+在采用2.2版本或之后版本内核的Linux 操作系统上, 'any' 这个虚拟网络接口可被用来接收所有网络接口上的数据包(nt: 这会包括目的是该网络接口的, 也包括目的不是该网络接口的). 需要注意的是如果真实网络接口不能工作在'混杂'模式(promiscuous)下,则无法在'any'这个虚拟的网络接口上抓取其数据包.
+如果 -D 标志被指定, tcpdump会打印系统中的接口编号，而该编号就可用于此处的interface 参数
+-n  不对地址(比如, 主机地址, 端口号)进行数字表示到名字表示的转换
+举例：tcpdump -n -i bond_virt -ee
+=========================
+115、awk的知识点
+awk是一个强大的文本分析工具，相对于grep的查找，sed的编辑，awk在其对数据分析并生成报告时，显得尤为强大。
+简单来说awk就是把文件逐行的读入，以空格为默认分隔符将每行切片，切开的部分再进行各种分析处理。
+awk语言的最基本功能是在文件或者字符串中基于指定规则浏览和抽取信息，awk抽取信息后，才能进行其他文本操作。
+完整的awk脚本通常用来格式化文本文件中的信息。
+通常，awk是以文件的一行为处理单位的。awk每接收文件的一行，然后执行相应的命令，来处理文本。
+
+调用awk的方式
+1.命令行方式
+awk [-F  field-separator]  'commands'  input-file(s)
+其中，commands 是真正awk命令，[-F域分隔符]是可选的。 input-file(s) 是待处理的文件。
+在awk中，文件的每一行中，由域分隔符分开的每一项称为一个域。通常，在不指名-F域分隔符的情况下，默认的域分隔符是空格。
+-F指定域分隔符为':',如：
+cat /etc/passwd |awk  -F ':'  '{print $1}' 
+
+2.shell脚本方式
+将所有的awk命令插入一个文件，并使awk程序可执行，然后awk命令解释器作为脚本的首行，一遍通过键入脚本名称来调用。
+相当于shell脚本首行的：#!/bin/sh
+可以换成：#!/bin/awk
+3.将所有的awk命令插入一个单独文件，然后调用：
+awk -f awk-script-file input-file(s)
+其中，-f选项加载awk-script-file中的awk脚本，input-file(s)跟上面的是一样的
+
+awk工作流程是这样的：读入有'\n'换行符分割的一条记录，然后将记录按指定的域分隔符划分域，填充域，
+$0则表示所有域,$1表示第一个域,$n表示第n个域。默认域分隔符是"空白键" 或 "[tab]键"
+
+awk命令形式:
+awk [-F|-f|-v] ‘BEGIN{} //{command1; command2} END{}’ file
+ [-F|-f|-v]   大参数，-F指定分隔符，-f调用脚本，-v定义变量 var=value
+'  '          引用代码块
+BEGIN   初始化代码块，在对每一行进行处理之前，初始化代码，主要是引用全局变量，设置FS分隔符
+//           匹配代码块，可以是字符串或正则表达式
+{}           命令代码块，包含一条或多条命令
+；          多条命令使用分号分隔
+END      结尾代码块，在对每一行进行处理之后再执行的代码块，主要是进行最终计算或输出结尾摘要信息
+cat /etc/passwd |awk  -F ':'  '{print $1}' 
+cat /etc/passwd |awk  -F ':'  'BEGIN {print "name,shell"}  {print $1","$7} END {print "blue,/bin/nosh"}' 
+
+awk工作流程是这样的：先执行BEGING，然后读取文件，读入有/n换行符分割的一条记录，然后将记录按指定的域分隔符划分域，
+填充域，$0则表示所有域,$1表示第一个域,$n表示第n个域,随后开始执行模式所对应的动作action。接着开始读入第二条记录······直到所有的记录都读完，
+最后执行END操作
+
+awk支持正则表达式
+搜索/etc/passwd有root关键字的所有行
+#awk -F: '/root/' /etc/passwd
+root:x:0:0:root:/root:/bin/bash
+这种是pattern的使用示例，匹配了pattern(这里是root)的行才会执行action(没有指定action，默认输出每行的内容)。
+搜索支持正则，
+例如找root开头的: awk -F: '/^root/' /etc/passwd
+搜索/etc/passwd有root关键字的所有行，并显示对应的shell
+# awk -F: '/root/{print $7}' /etc/passwd             
+/bin/bash
+这里指定了action{print $7}
+=================
+116、Linux上磁盘挂载
+1、查看分区
+fdisk -l 
+fdisk可以用m命令来看fdisk命令的内部命令；
+
+a：命令指定启动分区；
+
+d：命令删除一个存在的分区；
+
+l：命令显示分区ID号的列表；
+
+m：查看fdisk命令帮助；
+
+n：命令创建一个新分区；
+
+p：命令显示分区列表；
+
+t：命令修改分区的类型ID号；
+
+w：命令是将对分区表的修改存盘让它发生作用
+
+2、进入磁盘，对磁盘进行分区
+fdisk /dev/sdb
+3、格式化分区
+ 格式化命令：
+mkfs.ext3   /dev/sdb1 是格式化成 ext3
+mkfs.ext2   /dev/sdb1 是格式化成 ext2
+3、挂载分区
+格式化之后，就可以挂载分区了，最终使用分区
+使用mount命令，mount /dev/sdc2 /d2 
+4、卸载分区
+umount /dev/sdc2
+5、删除分区
+*****************
+开机直接挂载
+编辑/etc/fstab　文件
+添加：/dev/sda1 /test ext3 defaults 0  0 
+/dev/sdb1(磁盘分区)  /data1（挂载目录） ext3（文件格式）defaults  0  0
+重启则发选已经挂载上去。
+
+0， 0 表示开机不检查磁盘。
+
+也可以通过磁盘UUID挂载
+
+如果你试了sda5不行，可以试试用UUID进行挂载，查看UUID：
+ls -l /dev/disk/by-uuid/
+即可看到对应的UUID号
+*****************
+117、nova vnc proxy基本原理
+VNC Proxy的功能：
+将公网(public network)和私网(private network)隔离
+VNC client运行在公网上，VNCServer运行在私网上，VNC Proxy作为中间的桥梁将二者连接起来
+VNC Proxy通过token对VNC Client进行验证
+VNC Proxy不仅仅使得私网的访问更加安全，而且将具体的VNC Server的实现分离，可以支持不同Hypervisor的VNC Server但不影响用户体验
+
+VNC Proxy的部署
+在Controller节点上部署nova-consoleauth 进程，用于Token验证
+在Controller节点上部署nova-novncproxy 服务，用户的VNC Client会直接连接这个服务
+Controller节点一般有两张网卡，连接到两个网络，一张用于外部访问，我们称为public network，或者API network，这张网卡的IP地址是外网IP，如图中172.24.1.1，另外一张网卡用于openstack各个模块之间的通信，称为management network，一般是内网IP，如图中10.10.10.2
+在Compute节点上部署nova-compute，在nova.conf文件中有下面的配置
+vnc_enabled=True
+vncserver_listen=0.0.0.0 //VNC Server的监听地址
+vncserver_proxyclient_address=10.10.10.2 //nova vnc proxy是通过内网IP来访问vnc server的，所以nova-compute会告知vnc proxy用这个IP来连接我。
+novncproxy_base_url=http://172.24.1.1:6080/vnc_auto.html //这个url是返回给客户的url，因而里面的IP是外网IP
+
+VNC Proxy的运行过程：
+
+1、一个用户试图从浏览器里面打开连接到虚拟机的VNC Client-----vnc是图形用户界面显示
+2、浏览器向nova-api发送请求，要求返回访问vnc的url
+3、nova-api调用nova-compute的get vnc console方法，要求返回连接VNC的信息
+4、nova-compute调用libvirt的get vnc console函数
+5、libvirt会通过解析虚拟机运行的/etc/libvirt/qemu/instance-0000000c.xml文件来获得VNC Server的信息-----这个在沃云上也有这个目录，
+本计算节点上存在虚机的xml文件,这个vnc server服务器ip是宿主机的ip地址，这宿主机上运行这vnc server服务进程，为远程的每一个客户端创建一个唯一识别端口
+6、libvirt将host, port等信息以json格式返回给nova-compute
+7、nova-compute会随机生成一个UUID作为Token
+8、nova-compute将libvirt返回的信息以及配置文件中的信息综合成connect_info返回给nova-api
+9、nova-api会调用nova-consoleauth的authorize_console函数
+10、nova-consoleauth会将instance –> token, token –> connect_info的信息cache起来
+11、nova-api将connect_info中的access url信息返回给浏览器：http://172.24.1.1:6080/vnc_auto.html?token=7efaee3f-eada-4731-a87c-e173cbd25e98&title=helloworld%289169fdb2-5b74-46b1-9803-60d2926bd97c%29
+最主要的是这个token值，根据这个token，来获取到虚机，而前面的ip地址是proxy 代理的ip地址，proxy代理根据这个token来进行下一步的操作，这个proxy代理
+可以是公网ip地址
+12、浏览器会试图打开这个链接
+13、这个链接会将请求发送给nova-novncproxy
+14、nova-novncproxy调用nova-consoleauth的check_token函数
+15、nova-consoleauth验证了这个token，将这个instance对应的connect_info返回给nova-novncproxy
+16、nova-novncproxy通过connect_info中的host, port等信息，连接compute节点上的VNC Server，从而开始了proxy的工作
+
+术语解释
+通常情况下，为了提供完整的vnc功能，需要部署三个服务：
+nova-consoleauth: 提供token验证，维护token与ip地址、端口号的映射。
+nova-novncproxy: 支持基于浏览器的vnc 客户端，通常与nova-api部署在一起。
+nova-xvpvncproxy: 支持基于java的vnc客户端，，通常与nova-api部署在一起
+*****************************
+nova提供了novncproxy代理支持用户通过vnc来访问虚拟机，用户可以通过websocket、java客户端或者spicehtml5来访问。通过websket访问虚拟机的功能已经集成到horizon中，而通过java客户端则需要先安装相应的软件。为了方便用户访问虚拟机，nova通过有一个proxy来实现，proxy通常同nova-api一起部署。
+vnc访问的实现方法如下，首先是启动一个虚拟机时启用vnc，这可以通过给kvm加上vnc参数即可。这样，kvm就会启动一个vncserver监听虚拟机。通过websocket来访问虚拟时，其步骤如下：
+1. 通过nova-api获取访问url，url的格式是：http://ip:port/?token=xxx，该地址实际上就是vnc proxy的地址。
+2. 浏览器连接到vnc proxy
+3. vnc proxy连接到nova-consoleauth来验证token，并将token映射到虚拟机所在的宿主机的ip地址和某个端口，该端口就是虚拟机启动时所监听的端口。
+4. vnc proxy与虚拟机所在的宿主机的vncserver建立连接，并开始代理，直到浏览器session结束。
+在nova.conf中，计算节点可以指定vncserver的监听地址及vnc proxy应该通过那个地址连接到vncserver，该选项就是vncserver_proxyclient_address。vnc proxy充当了公网和计算节点之间的桥梁，此外还需要对vnc协议进行封装。
+
+vnc proxy配置方法
+通常情况下，为了提供完整的vnc功能，需要部署三个服务：
+    nova-consoleauth: 提供token验证，维护token与ip地址、端口号的映射。
+    nova-novncproxy: 支持基于浏览器的vnc 客户端，通常与nova-api部署在一起。
+    nova-xvpvncproxy: 支持基于java的vnc客户端，，通常与nova-api部署在一起。
+
+此外还需要对计算节点进行设当的配置。具体如下：
+    vnc_enabled=True   启用虚拟机的vnc功能。
+    vncserver_listen=0.0.0.0   默认是127.0.0.1，即只可以从本机进行访问，通常情况下是配置为管理网的IP地址。设置为0.0.0.0主要是考虑到动态迁移时，目的宿主机没有相应的IP地址，动态迁移会失败。
+    vncserver_proxyclient_address  该地址指明vnc proxy应该通过那个IP地址来连接vncserver，通常是管理网IP地址。
+    novncproxy_base_url=http://$SERVICE_HOST:6080/vnc_auto.html  指定浏览器client应该连接的地址。$SERVICE_HOST通常是一个公网IP地址。
+    xvpvncproxy_base_url=http://$SERVICE_HOST:6081/console  指定java client应该连接的地址。$SERVICE_HOST通常是一个公网IP地址。
+vnc proxy的配置则相对简单，只需要设置其监听的主机和端口即可。具体如下：
+
+    novncproxy_host=$SERVICE_HOST  通常为一个公网IP。
+    novncproxy_host=6080
+    xvpvncproxy_host=$SERVICE_HOST 通常为一个公网IP。
+    xvpvncproxy_port=6081
+===================
+118、openstack 负载均衡知识点
+负载均衡(Load Balance)
+作为 OpenStack Neutron 项目的高级服务之一，能够均衡的将所收到的网络流量分配给指定的实例们，
+并且能够确保工作负载以可预见的方式分配到这些实例中，从而达到更高效的使用系统资源的目的。
+这里的实例，指的是 OpenStack 管理的虚机。 在 Neutron 项目内部，
+习惯将负载均衡称为 LBaaS(Load Balance as a Service)
+VIP
+ VIP(Virturl IP address)就是负载均衡对外提供服务的地址。VIP 有自己的 IP 地址，而且一般都能通过公网进行访问。在 Neutron 中，
+VIP 对应着二层虚拟设备 br-int 上的一个 port。当负载均衡 Pool 里面至少有一个 member 时，VIP 才有存在的意义，
+因为这时至少有一个实际的 OpenStack 实例在处理网络请求。VIP 负责将网络流量分发到各个 member，Neutron LBaaS 中支持以下三种网络流量的分发方式。
+Round robin：平均的将网络流量分发到多个 member。
+Source IP：从某一个特定 IP 发来的网络请求，总是发到特定的 member。
+Least connections：将收到的网络请求，发给当前负载均衡池中连接数最少的 member。如果所有的 member 连接数一样，则遵循 Round robin 的方式。
+Neutron 中，VIP 还支持设置最大连接数(connection-limit)，这样在网络流量大时，可以保护负载均衡池。最大连接数可以设置成-1，这时不限制连接数。
+
+Pool
+Pool 是 LBaaS V1 中的 root resource。所有的其他资源都是基于 pool 来创建的。Neutron LBaaS 默认以 HAProxy 为 Driver 实现。
+在默认情况下，一个 pool 对应着一个独立的 HAProxy 进程，一个独立的 namespace。目前一个 pool 只能有一个 VIP，
+在 LBaaS V2 里面，可以允许一个 pool 对应多个 VIP
+
+Member
+Member 对应的是 pool 里面处理网络请求的 OpenStack 实例。在 OpenStack Neutron 中，member 是一个逻辑关系，
+表示着实例与 pool 的对应关系。这也就是说，一个 OpenStack 实例，可以对应不同的 pool，
+在 Neutron 的 LBaaS 里面创建多个 member。在创建 member 时所选择的实例，必须与 pool 处于同一个 subnet，否则将不能工作。
+（pool的vip地址必须与后端成员member在一个网段之内的原因是，负载均衡要把流量分发到后端成员上，就必须网络相同）
+
+Health monitor（健康监控）
+Health monitor 只有在关联 pool 时才有意义。它用来监测 pool 里面 member 的状态。它会以轮询的方式，
+去查询各个 member，如果 member 未作出响应，它会更新 member 的状态至 INACTIVE，
+这样在 VIP 分发网络请求时，就不会考虑这个 member 了。如果 member 恢复了响应，
+它会更新 member 的状态至 ACTIVE。这时，member 会重新出现在 VIP 的分发列表中。
+与其他的概念不同，Health monitor 在 Neutron 的负载均衡中不是必须的。
+也就是说，没有 Health monitor，也能组成一个负载均衡池。
+但是，如果没有 Health monitor，pool 会一直认为所有的 member 都是 ACTIVE 状态，
+这样所有的 member 会一直出现在 VIP 的分发列表中，哪怕 member 对应的实例不能响应网络请求。
+这在实际应用中会造成负载均衡的响应异常
+
+Neutron Load Balance 的实现
+Neutron LBaaS 是基于 Neutron 实现的，pythone-neutronclient 中包含了 LBaaS 相关的命令，
+LBaaS 的数据也是存储在 Neutron 的数据库中。LBaaS 的程序架构也遵循着 Neutron 对 service plugin 的要求
+
+通过openstack命令行在底层创建负载均衡的步骤
+在 Neutron 里面建立一个可用的负载均衡池，pool 是 Neutron LBaaS 中的 root resource，
+因此，首先应该创建一个 pool，再创建 pool 里面的 member 和 VIP，最后创建 Health monitor。
+
+创建 LBaaS 资源命令行
+1、创建pool
+# neutron lb-pool-create --lb-method ROUND_ROBIN --name mypool --protocol HTTP --subnet-id SUBNET_UUID --provider PROVIDER_NAME
+neutron lb-pool-create --lb-method ROUND_ROBIN --name lb_pool --protocol HTTP --subnet-id 93eb64f2-a5e4-4456-b319-10b60f5940d6 --provider haproxy  
+neutron lb-pool-create命令行参数---这些命令行参数对应门户界面的负载均衡器创建的时候，那一列
+optional arguments:
+  -h, --help            show this help message and exit
+  --request-format {json,xml}
+                        The XML or JSON request format.
+  --tenant-id TENANT_ID
+                        The owner tenant ID.
+  --admin-state-down    Set admin state up to false.
+  --description DESCRIPTION
+                        Description of the pool.
+  --lb-method {ROUND_ROBIN,LEAST_CONNECTIONS,SOURCE_IP}
+                        The algorithm used to distribute load between the
+                        members of the pool.
+  --name NAME           The name of the pool.
+  --protocol {HTTP,HTTPS,TCP,UDP,TERMINATED_HTTPS}
+                        Protocol for balancing.-------负载均衡的协议
+  --subnet-id SUBNET    The subnet on which the members of the pool will be
+                        located.
+  --provider PROVIDER   Provider name of loadbalancer service.
+  --ha-mode HA_MODE     Ha mode
+
+ 2、创建后端成员----所有参数对应门户后端成员界面的内容
+# neutron lb-member-create --address 10.0.0.3 --protocol-port 80 mypool
+# neutron lb-member-create --address 10.0.0.4 --protocol-port 80 mypool
+
+neutron lb-member-create命令行参数
+positional arguments:
+  POOL                  Pool ID or name this vip belongs to.
+
+optional arguments:
+  -h, --help            show this help message and exit
+  --request-format {json,xml}
+                        The XML or JSON request format.
+  --tenant-id TENANT_ID
+                        The owner tenant ID.
+  --admin-state-down    Set admin state up to false.
+  --weight WEIGHT       Weight of pool member in the pool (default:1,
+                        [0..256]).
+  --address ADDRESS     IP address of the pool member on the pool network.
+  --protocol-port PROTOCOL_PORT----后端成员为了请求或连接而监听的端口
+                        Port on which the pool member listens for requests or
+                        connections.
+ The --protocol-port attribute is required;
+ it is used to specify the listening port of the application being balanced.
+ For example, if you are balancing HTTP traffc,the listening port specifed would be 80.
+ For SSL traffc, the port specifed would be 443.
+ In most cases, the VIP associated with the pool will utilize the same application port number
+--protocol-port属性是必须的。他被用于指定将被负载的应用的监听端口 
+例如：如果你将负载均衡http数据流，指定的监听端口是80端口。对于ssl数据流，被指定的数据流是443端口。
+在很多例子中，关联pool的vip将使用相同的应用程序端口
+3、创建pool的vip
+# neutron lb-vip-create --name myvip --protocol-port 80 --protocol HTTP –-subnet-id SUBNET_UUID –-address 10.0.0.10
+
+neutron lb-vip-create命令行参数
+optional arguments:
+  -h, --help            show this help message and exit
+  --request-format {json,xml}
+                        The XML or JSON request format.
+  --tenant-id TENANT_ID
+                        The owner tenant ID.
+  --address ADDRESS     IP address of the vip.
+  --admin-state-down    Set admin state up to false.
+  --connection-limit CONNECTION_LIMIT
+                        The maximum number of connections per second allowed
+                        for the vip. Positive integer or -1 for unlimited
+                        (default).
+  --description DESCRIPTION
+                        Description of the vip.
+  --name NAME           Name of the vip.
+  --default-tls-container-id DEFAULT_TLS_CONTAINER_ID
+                        Default TLS container ID to retrieve TLS information.
+  --sni-container-ids SNI_CONTAINER_IDS [SNI_CONTAINER_IDS ...]
+                        List of TLS container IDs for SNI.
+  --protocol-port PROTOCOL_PORT-------侦听客户端流量的TCP端口
+                        TCP port on which to listen for client traffic that is
+                        associated with the vip address.
+  --protocol {TCP,HTTP,HTTPS,UDP,TERMINATED_HTTPS}------负载均衡的协议
+                        Protocol for balancing.
+  --subnet-id SUBNET    The subnet on which to allocate the vip address.------分配给vip值的网络段
+  
+ 4、# neutron lb-healthmonitor-create --delay 3 --type HTTP --max-retries 3 --timeout 3
+ neutron lb-healthmonitor-create命令行参数--------这个命令行参数对应的是健康检查界面的内容
+ optional arguments:
+  -h, --help            show this help message and exit
+  --request-format {json,xml}
+                        The XML or JSON request format.
+  --tenant-id TENANT_ID
+                        The owner tenant ID.
+  --admin-state-down    Set admin state up to false.
+  --expected-codes EXPECTED_CODES
+                        The list of HTTP status codes expected in response
+                        from the member to declare it healthy. This attribute
+                        can contain one value, or a list of values separated
+                        by comma, or a range of values (e.g. "200-299"). If
+                        this attribute is not specified, it defaults to "200".
+						在应答的时候，期望来自后端成员的宣布他健康的http 状态码列表。
+						这个属性可以包含一个值，或者一个用逗号分割的值列表，或者一个值范围。
+						如果这个属性没有被指定，他默认是200
+  --http-method HTTP_METHOD
+                        The HTTP method used for requests by the monitor of
+                        type HTTP.-----http类型的监控用于请求的http方法---这个对应监控页面的选择put或者post方法
+  --url-path URL_PATH   The HTTP path used in the HTTP request used by the
+                        monitor to test a member health. This must be a string
+                        beginning with a / (forward slash).被http请求用的http路径，这个路径被监控器用于测试后端成员的监控。
+						这个值必须是一个字符串
+  --delay DELAY         The time in seconds between sending probes to members.-----向成员发送探测之间的时间（秒） in seconds----用秒计算的意思
+  --max-retries MAX_RETRIES
+                        Number of permissible connection failures before-----在改变后端成员的状态为inactive之前，可以允许失败的连接次数
+                        changing the member status to INACTIVE. [1..10].
+  --timeout TIMEOUT     Maximum number of seconds for a monitor to wait for a------一个监视器在他超时之前等待建立连接的最大值。这个值必须小于延迟值
+                        connection to be established before it times out. The
+                        value must be less than the delay value.--------of seconds用秒
+  --type {PING,TCP,HTTP,HTTPS}
+                        One of the predefined health monitor types.预定义的健康检查类型
+  --pool POOL           ID or name of the pool that this healthmonitor will monitor.---监控器将要监视的pool名称
+
+  5、neutron lb-healthmonitor-associate  HEALTHMONITOR_UUID mypool (associate是发生联系)
+neutron lb-healthmonitor-associate 命令行详解
+Create a mapping between a health monitor and a pool.------创建一个监控器与pool之间的映射
+positional arguments:
+  HEALTH_MONITOR_ID     Health monitor to associate.
+  POOL                  ID of the pool to be associated with the health
+                        monitor.
+首先创建了一个 pool，指定的网络流量分发方式是 Round robin，提供服务的协议是 HTTP，这在前面都有说明。
+--subnet-id 是希望添加的 member 所在的 subnet 的 id，这在前面也有说明。
+创建 member 时，指定的--address 是实例对应的 IP 地址。在创建 VIP 时，
+指定的--address 是一个空闲的 IP，这个参数可以不指定，这里为了后面的结果验证写上一个固定的地址。
+在创建 member 和 VIP 时，都必须指定 pool，它们只能属于一个 pool。而创建 Health monitor 的时候，
+不用指定 pool，通过一条额外的指令关联 pool。一个 Health monitor 可以关联多个 pool。创建 Health monitor 时，
+参数的意义分别是：--delay 轮询的间隔；--type 轮询时查询的方式，
+支持 HTTP、HTTPS、TCP 和 PING；--max-retries 轮询失败的最大尝试次数；--timeout 每次轮询的超时时间。		
+
+OpenStack 直接采用各种开源可用的负载均衡项目来完成负载均衡的任务，默认使用 HAProxy。
+LBaaS 所做的任务就是根据用户提出的负载均衡要求生成符合要求的HAProxy配置文件并启动 HAProxy，
+然后由 HAProxy 进行负载均衡		
+
+Session persistence （会话保持）
+会话保持表示在一个会话期间，转发一个用户的请求到同一个后端服务器。这对购物车或者付款类的请求非常重要。 常用的方法包括：
+Source IP：相同来源的请求转发到同一个服务器
+HTTP Cookie：该模式下，loadbalancer 为客户端的第一次连接生成 cookie，后续携带该 cookie 的请求会被某个 member 处理
+APP Cookie：该模式下，依靠后端应用服务器生成的 cookie 决定被某个 member 处理
+==============
+小知识点1、
+80端口是为HTTP（HyperText Transport Protocol)即超文本传输协议开放的，此为上网冲浪使用次数最多的协议，
+主要用于WWW（World Wide Web）即万维网传输信息的协议。
+可以通过HTTP地址（即常说的“网址”）加“:80”来访问网站，
+因为浏览网页服务默认的端口号都是80，因此只需输入网址即可，不用输入“:80”了。
+Apache与Tomcat都是Apache开源组织开发的用于处理HTTP服务的项目，两者都是免费的，都可以做为独立的
+Web服务器运行。Apache是Web服务器而Tomcat是Java应用服务器。
+Apache服务器 只处理 静态HTML
+tomcat服务器 静态HTML 动态 JSP Servlet 都能处理
+=========
+小知识点2
+OpenStack自从Kilo版本引入了V2.0版本的LBaaS API，并且从Liberty版本开始正式支持V2.0 API，
+同时该API支持的LBaaS plug-in换成了Octavia。
+换成Octavia的原因是之前使用的haproxy plug-in没有HA功能，扩展性也比较差，不适用于大规模部署的场景
+===========
+负载均衡的配置内容----记住一点是不同的版本，它的配置项参数可能不一样，这个需要特别注意，版本之间的差异
+在Liberty版本里配置基于haproxy plug-in的LBaaS
+1、在controller节点的配置
+修改/etc/neutron/neutron_lbaas.conf，添加如下内容
+[DEFAULT]  
+service_provider = LOADBALANCER:Haproxy:neutron.services.loadbalancer.drivers.HAProxy.plugin_driver.HaproxyOnHostPluginDriver:default
+修改/etc/neutron/neutron.conf，添加如下内容
+[DEFAULT]  
+service_plugins = lbaas
+注意：如果还想使用L3的router功能，需要将route也加入，如下：
+[DEFAULT]  
+service_plugins = lbaas,router
+启动neutron-server服务
+systemctl restart neutron-server.service 
+2、在network节点的配置
+修改/etc/neutron/lbaas_agent.ini，添加如下内容。注意在liberty版本里的device_driver必须是
+"neutron_lbaas.services.loadbalancer.drivers.haproxy.namespace_driver.HaproxyNSDriver"，
+因为旧的"neutron.services.loadbalancer.drivers.haproxy.namespace_driver.HaproxyNSDriver"已经被移除了。
+
+[DEFAULT]  
+device_driver = neutron_lbaas.services.loadbalancer.drivers.haproxy.namespace_driver.HaproxyNSDriver  
+interface_driver = neutron.agent.linux.interface.OVSInterfaceDriver  
+  
+[haproxy]  
+user_group = haproxy 
+
+安装haproxy软件，默认openstack环境不安装这个软件
+ yum install haproxy 
+启动neutron-lbaas-agent服务
+systemctl restart neutron-lbaas-agent.service 
+
+在用负载均衡验证http服务的时候，记住需要在安全组中添加80端口的规则，允许，80端口通过
+在虚机的default group里打开80端口
+# neutron security-group-rule-create default --protocol tcp --port-range-min 80 --port-range-max 80 
+
+负载均衡测试案例-----这两条命令行是在要测试的虚拟机上运行的脚本命令，用于添加一个80端口的监听进程，模拟httpd监听
+#MYIP=$(ifconfig eth0|grep 'inet addr'|awk -F: '{print $2}'| awk '{print $1}') ----这一行命令的功能是取虚机的ip地址，赋值给MYIP这个变量，
+这个eth0网卡名字需要根据不同，虚机实际的网卡名字进行修改 
+# 
+while true;
+do echo -e "HTTP/1.0 200 OK\r\n\r\nWelcome to $MYIP" | sudo nc -l -p 80 ; 
+done&  
+小知识点
+echo [-ne][字符串]
+-e 若字符串中出现以下字符，则特别加以处理，而不会将它当成一般文字输出：
+   \a 发出警告声；
+   \b 删除前一个字符；
+   \c 最后不加上换行符号；
+   \f 换行但光标仍旧停留在原来的位置；
+   \n 换行且光标移至行首；
+   \r 光标移至行首，但不换行；
+   \t 插入tab；
+   \v 与\f相同；
+   \\ 插入\字符；
+   \nnn 插入nnn（八进制）所代表的ASCII字符；
+ nc命令行
+想要连接到某处: nc [-options] hostname port[s] [ports] …
+绑定端口等待连接: nc -l -p port [-options] [hostname] [port]
+-l 监听模式，用于入站连接
+-p port 本地端口号
+
+测试负载均衡脚本
+#!/bin/bash
+for k in $( seq 1 10 )
+do
+curl http://10.0.0.10-----这个ip地址是负载均衡pool的vip地址，访问10次
+sleep 1
+done
+===============
+负载均衡配置，沃云的
+系统支持lvs驱动还是haproxy驱动的配置
+neutron-agent（一般在计算节点）是修改/etc/neutron/lbaas_agent.ini这个文件，neutron-server(一般在控制节点上)所在节点修改/etc/neutron/neutron_lbaas.conf 
+修改后都需要restart
+service neutron-lbaas-agent restart
+service neutron-server restart
+（勇哥，原话：计算节点是修改/etc/neutron/lbaas_agent.ini这个文件，neutron-server所在节点修改/etc/neutron/neutron_lbaas.conf ，修改后都需要restart）
+systemctl restart neutron-lbaas-agent ----重启lb-agent服务，门户负载均衡创建失败，首先需要查看一下，计算节点底层的负载均衡的驱动是否正确
+是用例lvs还是haproxy驱动，驱动的配置文件是/etc/neutron/lbaas_agent.ini文件中的device_driver参数
+device_driver = neutron.services.loadbalancer.drivers.haproxy.namespace_driver.HaproxyNSDriver--------haproxy驱动
+device_driver = neutron.services.loadbalancer.drivers.lvs.namespace_driver.LvsNSDriver----------------lvs驱动
+
+neutron-server上还需要修改配置，/etc/neutron/neutron_lbaas.conf
+service_provider=LOADBALANCER:Lvs:neutron_lbaas.services.loadbalancer.drivers.lvs.plugin_driver.LvsOnHostPluginDriver
+LBaaS v2服务提供程序添加到/etc/neutron/neutron_lbaas.conf的[service_providers]部分中的service_provider参数
+（如果您有其他网络服务插件（例如VPNaaS或FWaaS）的现有服务提供商，请将[service_providers]部分中上面显示的service_provider行作为单独的行添加。
+ 这些配置指令是可重复的，不能以逗号分隔。）
+agent就是相当于客户端，是在提供具体服务的计算节点上运行的，来管理该计算节点的服务，与控制节点通信
+查看计算节点用了哪个负载均衡驱动，先用命令行agent-list查看哪些节点上跑着负载均衡服务，
+然后呢，使用agent-show命令查看该代理的详细信息
+neutron -h | grep agent
+  agent-delete                                    Delete a given agent.
+  agent-list                                      List agents.-----------------------查看有哪些代理
+  agent-show                                      Show information of a given agent.------可以查看代理的具体信息
+  agent-update                                    Updates the admin status and description for a specified agent.
+********************
+119、虚拟机resize操作知识点
+Resize 的作用是调整 instance 的 vCPU、内存和磁盘资源。
+Instance 需要多少资源是定义在 flavor 中的，resize 操作是通过为 instance 选择新的 flavor 来调整资源的分配
+因为 instance 需要分配的资源发生了变化，在 resize 之前需要借助 nova-scheduler 重新为 instance 选择一个合适的计算节点，
+如果选择的节点与当前节点不是同一个，那么就需要做 Migrate
+所以本质上讲：Resize 是在 Migrate 的同时应用新的 flavor。 
+Migrate 可以看做是 resize 的一个特例： flavor 没发生变化的 resize，这也是为什么我们在日志中看到 
+migrate 实际上是在执行 resize 操作（待验证这句话）
+虚拟机只能向上升级，不允许向下降级
+********************
+120、curl命令行详解
+curl命令作用
+curl命令是一个功能强大的网络工具，它能够通过http、ftp等方式下载文件，也能够上传文件，同时支持HTTPS等众多协议，
+还支持POST、cookies、认证、从指定偏移处下载部分文件、用户代理字符串、限速、文件大小、进度条等特征。
+其实curl远不止前面所说的那些功能，大家可以通过man curl阅读手册页获取更多的信息。类似的工具还有wget。
+curl命令使用了libcurl库来实现，libcurl库常用在C程序中用来处理HTTP请求，curlpp是libcurl的一个C++封装，
+这几个东西可以用在抓取网页、网络监控等方面的开发，而curl命令可以帮助来解决开发过程中遇到的问题。
+常用参数
+-H/--header <header> 指定请求头参数，
+  --ignore-content-length  忽略的HTTP头信息的长度
+-i/--include     输出时包括protocol头信息
+-s/--silent  静默模式。不输出任何东西
+-X/--request <command> 指定什么命令。curl默认的HTTP动词是GET，使用-X参数可以支持其他动词。
+-d/--data <data>   HTTP POST方式传送数据
+=============
+121、python json.tool工具的使用
+json.tool的作用是以json样式在屏幕上显示数据
+使用方法例如
+echo '{"name": "lucy", "age": "18"}' | python -m json.tool
+{
+"age": "18",
+"name": "lucy"
+}
+==========
+122、http协议详解
+http协议请求方法
+GET 	请求指定的页面信息，并返回实体主体。
+HEAD 	类似于get请求，只不过返回的响应中没有具体的内容，用于获取报头
+POST 	向指定资源提交数据进行处理请求（例如提交表单或者上传文件）。数据被包含在请求体中。POST请求可能会导致新的资源的建立和/或已有资源的修改。
+HTTP请求报文由3部分组成（请求行+请求头+请求体）
+请求HTTP报文和响应HTTP报文都拥有若干个报文头属性，它们是为协助客户端及服务端交易的一些附属信息。
+HTTP的响应报文也由三部分组成（响应行+响应头+响应体）
+响应报文多了一个“响应状态码”，它以“清晰明确”的语言告诉客户端本次请求的处理结果
+HTTP的响应状态码由5段组成：
+1xx 消息，一般是告诉客户端，请求已经收到了，正在处理，别急...
+2xx 处理成功，一般表示：请求收悉、我明白你要的、请求已受理、已经处理完成等信息.
+3xx 重定向到其它地方。它让客户端再发起一个请求以完成整个处理。
+4xx 处理发生错误，责任在客户端，如客户端的请求一个不存在的资源，客户端未被授权，禁止访问等。
+5xx 处理发生错误，责任在服务端，如服务端抛出异常，路由出错，HTTP版本不支持等。
+200 OK 
+你最希望看到的，即处理成功！
+404 Not Found 
+你最不希望看到的，即找不到页面。如你在google上找到一个页面，点击这个链接返回404，表示这个页面已经被网站删除了，
+google那边的记录只是美好的回忆
+401 (UNAUTHORIZED): 客户端无权访问该资源。这通常会使得浏览器要求用户输入用户名和密码，以登录到服务器。
+403 (FORBIDDEN): 客户端未能获得授权。这通常是在401之后输入了不正确的用户名或密码。
+通用头标：即可用于请求，也可用于响应，是作为一个整体而不是特定资源与事务相关联。
+请求头标：允许客户端传递关于自身的信息和希望的响应形式。
+响应头标：服务器和于传递自身信息的响应。
+HTTP Request Header 请求头
+Content-Type 	请求的与实体对应的MIME信息
+Content-Length 	请求的内容长度
+Authorization 	HTTP授权的授权证书
+Host 	指定请求的服务器的域名和端口号
+
+HTTP Responses Header 响应头
+WWW-Authenticate 	表明客户端请求实体应该使用的授权方案
+Content-Type 	返回内容的MIME类型
+Content-Type，内容类型，一般是指网页中存在的Content-Type，用于定义网络文件的类型和网页的编码，
+决定浏览器将以什么形式、什么编码读取这个文件，比如用PHP输出图片文件、JSON数据、XML文件等非HTML内容时，
+就必须用header函数来指定Content-Type，才能达到输出一张图片或是其它指定内容类型的需求。
+==================
+123、keystone业务知识点
+业务端口：5000
+管理端口：35357
+业务API 测试
+获取版本号：
+curl http://0.0.0.0:5000/ | python -mjson.tool
+curl http://0.0.0.0:5000/v2.0/ | python -mjson.tool
+管理API测试
+获取版本号：
+curl http://0.0.0.0:35357/ | python -mjson.tool
+curl http://0.0.0.0:35357/v2.0/ | python -mjson.tool
+==============
+124、openstack keystone的知识点
+经典帖子 http://www.tuicool.com/articles/i2qUNf
+
+从openstack系统的整体视角来看keystone提供的功能，就是，用户登录keystone，获得一个token，
+用此token作为一个统一标识，访问其他的计算、存储和网络等服务.
+user：一个使用openstack云服务的人、系统或者服务。
+project：租户，一个人或者组织，直接和虚拟机、卷等资源关联。
+role：用户角色，和policy配合使用。
+token：一个通过keystone验证的用户标识，它的范围与user+project或者user+domain关联，根据获取的token的方式来区分。
+service：compute，image，identity，volume，network。
+endpoint：service的网络接入地址，具有region属性。
+domain：类似命名空间，解决v2 API用户名和租户名只能全局唯一的问题。
+group：用户的集合，便于给用户整体授予和取消权限
+policy：对于服务的操作规则，和角色相关，可以定义哪个角色可以进行哪些操作（v3版本只增加了crud操作，没有逻辑实现替代policy.json的功能）
+trust：一个用户可以通过trust将自己的role和个人信息转交给另一个用户使用
+keystone配置文件目录为/etc/keystone/，/etc/keystone/有如下默认配置文件
+keystone.conf keystone的核心配置文件
+logging.conf keystone的日志配置文件
+default_catalog.templates keystone的catalog后端配置为template模式时的catalog模板
+
+openstack中的各个服务中，都有一个认证中间件
+为了使token验证流程尽量通用并减少对于应用的侵入性，keystone将验证token的机制（auth_token）独立出来，
+封装在keystone client中，设计为Openstack wsgi标准组件，继承wsgi.Middleware，
+作为pipline的一个可配置的paste filter，在nova、cindier、neutron、swift、glance中都有配置，
+作为一个openstack单点登录（SSO）的必要组成部分，实现用户调用openstack服务时的统一鉴权认证
+各个文件的认证中间件，一般在api-xx.ini中配置，搜索authtoken关键即可
+
+Keystone（OpenStackIdentity Service）是OpenStack框架中，负责身份验证、服务规则和服务令牌的功能，
+它实现了OpenStack的Identity API。同时作为一个通用的云OS验证系统可以和已有的后端用户目录服务整合，例如：LDAP。
+
+Keystone可以分解为两个核心功能，单点登录和服务发现。Keystone类似一个服务总线，
+或者说是整个Openstack框架的注册表，其他服务通过Keystone来注册其服务的Endpoint（服务访问的URL），
+任何服务之间相互的调用，都需要经过Keystone的身份验证，以获得目标服务的Endpoint来找到目标服务。
+Service Catalog（服务目录）是Keystone为OpenStack提供的一个REST API端点列表，并以此作为决策参考，说白了，就是我openstack
+可以对外提供哪些一斤注册的服务
+keystone catalog # 可以显示所有已有的service
+keystone catalog --service <service-type> # 显示某个service信息
+
+Endpoint，直译为“端点”，它是一个服务暴露出来的访问地址，具有region(区域)属性。如果需要访问一个服务，必须知道它的Endpoint。
+因此，在Keystone中包含一个Endpoint模板（EndpointTemplate），
+这个模板提供了所有存在的服务Endpoints信息。一个EndpointTemplate包含一个URLs列表，
+列表中的每个URL都对应一个服务实例的访问地址，并且具有public、private和admin这三种权限：
+publicurl可以被全局访问，private url只能被局域网访问，admin url被从常规的访问中分离
+Endpoint 端点：一个网络可访问的服务地址，通过它你可以访问一个服务，通常是个 URL 地址。
+不同 region 有不同的service endpoint。endpoint告诉也可告诉 OpenStack service 去哪里访问特定的 servcie。
+比如，当 Nova 需要访问 Glance 服务去获取 image 时，Nova 通过访问 Keystone 拿到 Glance 的 endpoint，
+然后通过访问该 endpoint 去获取Glance服务。我们可以通过Endpoint的 region 属性去定义多个 region。Endpoint 该使用对象分为三类：
+adminurl 给 admin 用户使用
+internalurl 给 OpenStack 内部服务使用来跟别的服务通信
+publicurl 其它用户可以访问的地址
+创建一个使用不同 IP 的 endpoint
+keystone endpoint-create \
+ --region RegionOne \
+ --service-id=1ff4ece13c3e48d8a6461faebd9cd38f \
+ --publicurl='https://public-ip:8776/v1/%(tenant_id)s' \
+ --internalurl='https://management-ip:8776/v1/%(tenant_id)s' \
+ --adminurl='https://management-ip:8776/v1/%(tenant_id)s'
+然后你可以配置 OpenStack service 使用另一个 service 的 endpoint 的 internalurl 去访问另一个资源
+
+Policy 策略：OpenStack 对用户的验证除了 OpenStack 的身份验证以外，还需要鉴别用户对某个服务是否有访问权限。
+Policy 机制就是用来控制某一个 User 在某个 Tenant 中某个操作的权限。这个 User 能执行什么操作，
+不能执行什么操作，就是通过 policy 机制来实现的。对于 Keystone 服务来说，policy 就是一个json 文件，
+默认是 /etc/keystone/policy.json。通过配置这个文件，Keystone Service 实现了对 User 的基于用户角色的权限管理。
+==========================
+124、创建卷的时候，使用--image参数，这样会创建一个系统盘，系统的镜像已经拷贝到系统盘里面了，然后你在通过
+nova boot命令的时候，使用这个系统盘启动虚机，就很快了， 
+=========================
+125、openstack环境中安全组的知识点
+在Grizzly版中，安全组从Nova移植到了Quantum。有几个特性：
+1. 后向兼容。从F版升级到G版，仍然可以用F版Nova的API进行安全组的操作。
+2. 同时支持ingress和egress（即入口和出口规则），但通过Nova API仅支持ingress规则。
+3. 安全组作用于Quantum中的Port，而不再是原来Nova中的虚拟机。
+4. 允许在虚拟机运行期修改安全组
+5. 每个租户（tenant, 在G版的Keystone中又叫project）都有默认的安全组
+
+安全组行为：
+1. 如果没有指定ingress规则，则不允许任何数据包进入；
+2. 如果没有指定egress规则，则不允许任何数据包出去；
+3. 新建一个安全组时，会自动增加一条规则，允许所有的数据包出去
+4. 每个租户的默认安全组，允许租户的虚拟机之间内部通信；允许租户虚拟机对外通信；不允许外界数据流进入租户的虚拟机
+
+
+Neutron 为 instance 提供了两种管理网络安全的方法：
+安全组（Security Group）和虚拟防火墙。
+安全组的原理是通过 iptables 对 instance 所在计算节点的网络流量进行过滤。
+虚拟防火墙则由 Neutron Firewall as a Service（FWaaS）高级服务提供。
+其底层也是使用 iptables，在 Neutron Router 上对网络包进行过滤。
+每个 Project（租户）都有一个命名为 “default” 的默认安全组
+default” 安全组有四条规则，其作用是：
+允许所有外出（Egress）的流量，但禁止所有进入（Ingress）的流量。
+===========================
+126、openstack常用问题定位的方式与手段
+在各个配置文件中设置 debug = true 和 verbose = true 可帮助诊断问题，在更改组件的配置文件时，请重新启动组件的服务以使更改生效
+=============================
+127、负载均衡的配置
+负载均衡负载的配置里面，真正起作用的是计算节点的驱动
+配置文件中/etc/neutron/lbaas_agent.ini下列驱动参数，只能配置一个，不能同时配置两个
+device_driver = neutron.services.loadbalancer.drivers.lvs.namespace_driver.LvsNSDriver----这个是启动lvs驱动
+device_driver = neutron.services.loadbalancer.drivers.haproxy.namespace_driver.HaproxyNSDriver----这个是启动的haproxy驱动
+修改完，需要重启负载均衡agent服务
+
+neutron-server也需要修改，需要配置文件/etc/neutron/neutron_lbaas.conf
+service_provider=LOADBALANCER:Lvs:neutron_lbaas.services.loadbalancer.drivers.lvs.plugin_driver.LvsOnHostPluginDriver
+======================
+128、判断rabbitmq的状态信息
+ rabbitmqctl cluster_status 
+======================
+129、neutron 服务的配置
+在控制节点上，neutron服务，一般修改的配置文件是
+/etc/neutron/neutron.conf，
+/etc/neutron/plugins/ml2/ml2_conf.ini，这个文件里面配置使用可用的vlan
+对应参数是network_vlan_ranges
+启动的服务是Systemctl start neutron-server
+
+在计算节点上的neutron服务，处理修改下面两个文件
+/etc/neutron/neutron.conf，
+/etc/neutron/plugins/ml2/ml2_conf.ini
+还需要根据不同的需求，来配置不同的agent服务配置文件，来提供服务
+在计算节点上启动的neutron agent进程,来做具体的工作
+systemctl start neutron-openvswitch-agent
+systemctl start neutron-dhcp-agent
+systemctl start neutron-lbaas-agent
+systemctl start neutron-vrouter-netns-agent
+
+=================
+130、nova 创建安全组命令
+nova secgroup-add-rule
+Positional arguments:
+  <secgroup>   ID or name of security group.
+  <ip-proto>   IP protocol (icmp, tcp, udp).
+  <from-port>  Port at start of range.
+  <to-port>    Port at end of range.
+  <cidr>       CIDR for address range
+
+====================
+131、ln -s 源文件 目标文件
+它的功能是为某一个文件在另外一个位置建立一个链接
+===================
+132、
+http://www.cnblogs.com/kevingrace/p/6099205.html?utm_source=itdadao&utm_medium=referral
+ClusterShell就是这样一种小的集群管理工具，原理是利用ssh，可以说是Linux系统下非常好用的运维利器
+选择了clustershell这个软件（也简称clush），原因如下：
+1）安装方便。一条指令就能轻松安装。
+2）配置方便。很多集群管理软件都需要在所有的服务器上都安装软件，而且还要进行很多的连接操作，clustershell就相当的方便了，
+仅仅需要所有机器能够ssh无密码登录即可，然后只在一台服务器上安装clustershell即可。
+3）使用方便。clustershell的命令相对来说非常简单，只有一两个指令以及三四个参数需要记
+配置clush：
+在/etc/clustershell目录下，手动创建groups文件
+# touch /etc/clustershell/groups
+# vim /etc/clustershell/groups
+all: a1 host1 host2
+name:host3 host4
+
+可以将groups文件里默认的示例内容全部注释，然后按照自己的集群管理需求自定义配置的组对应关系，
+（再次强调下：groups文件中的all组对应是必须要配置的，clush 有 -a 这个参数，主机间用空格分离。）
+如下，配置组all，组db等的对应关系，这些组不是真实存在机器上的用户组，而是在groups文件中设置的别名而已，用以批量操作。
+总之，可以在groups文件里设置多组对应关系，然后对组对应的主机进行远程操控！！！
+需要注意的是all 是必须配置的，clush 有 -a 这个参数，主机间用空格分离。
+例如：
+db: ops-server[2,3]
+all: ops-server[2,3,4]
+
+做好ssh信任关系（最好事后验证下无密码信任关系）
+[root@ops-server1 ~]# ssh-keygen -t rsa (产生本机的公私钥文件,否则没法做ssh信任关系，也没法使用ssh-copy-id命令)
+[root@ops-server1 ~]# ssh-copy-id ops-server2-----------拷贝密钥到这个主机上
+[root@ops-server1 ~]# ssh-copy-id ops-server3
+[root@ops-server1 ~]# ssh-copy-id ops-server4
+
+常用的是下面几个参数：
+-g 后面指定设置的组
+-a 表示所有的组
+-w 后面跟主机节点，多个主机中间用逗号隔开
+-x 表示去掉某个节点进行操作。后面跟主机节点，多个主机中间用逗号隔开
+-X 表示去掉某个组进行操作，多个组之间用逗号隔开
+-b 相同输出结果合并
+
+注意，clush操作远程机器，执行动作要放在双引号或单引号内进行
+clush -g db uptime
+clush -a hostname
+ clush -w ops-server3 'ifconfig|grep "inet addr"|grep 192.168'
+ops-server3: inet addr:192.168.1.118 Bcast:192.168.1.255 Mask:255.255.255.0
+clush -b -a hostname
+clush -a -x ops-server2,ops-server4 hostname
+ops-server3: ops-server3
+
+clush进行文件或目录分发：
+--copy 表示从本地拷贝文件或目录到远程集群节点上，等于-c
+--rcopy 表示从远程集群节点上拷贝文件或目录到本机上
+--dest 前面表示本地要复制的文件或目录路径，后面表示远程机器的存放路径。--dest后面可以空格跟目标路径，
+也可以是=目标路径。  比如--dest /tmp 等同于 --dest=/tmp
+clush -g db -c /root/test.file --dest /root/
+clush -w ops-server4 --copy test.file --dest /root/
+
+=============
+133、zbs存储的相关管理命令
+集群信息的命令行
+zbs-meta chunk list 查看cluster中各个组成成员的空间使用情况及健康状况
+zbs-tool service list 查看cluster状态，主要查看有哪些成员组成了集群
+
+pool资源池管理相关命令行
+1、执行命令zbs-meta pool create pool_name 创建一个新的pool
+2、执行zbs-meta pool list 查看新创建pool信息
+3、执行zbs-meta pool show pool_name 查看新创建pool的详细信息
+4、执行zbs-meta pool delete pool_name 删除新创建的pool
+
+zbs中disk管理相关命令
+1、执行命令zbs-meta disk create pool_name disk_name size 创建名为test，大小为1GB的volume
+2、执行命令zbs-meta disk list pool_name 查看 pool 中disk信息
+3、执行zbs-meta disk show pool_name disk_name 查看disk详细信息
+4、执行zbs-meta disk delete pool_name disk_name 删除创建disk
+
+zbs中disk读写测试相关命令
+1、执行命令zbs-meta disk list pool_name 查看disk信息
+2、执行zbs-chunk disk write pool_name disk_name -i /dev/zero  测试disk写入状态
+3、执行zbs-chunk disk read pool_name disk_name -o file_name 测试disk读取状态
+
+zbs中snapshot管理相关命令
+1、执行命令zbs-meta snapshot create pool_name disk_name snapshot_name 对disk进行快照
+2、执行zbs-meta snapshot list pool_name disk_name 查看快照信息
+
+
+zbs中clone管理相关命令
+1、执行命令zbs-meta disk create pool_name disk_name size --snapshot=pool_name/disk_name/snapshot_name 创建新disk从snapshot中
+2、查看clone出的新文件
+
+
+smartx的存储，逻辑类似与openstack中的负载均衡，通过pool来管理disk,因此需要先创建pool，再创建disk，然后对disk进行克隆、快照之类的操作
+
+===============
+134、连接数据库的命令行
+连接mysql3306端口命令
+mysql -h58.64.217.120 -ushop -p123456 
+连接非3306端口(指定其他端口) 的命令 
+mysql -h58.64.217.120 -P3308 -ushop -p123456 
+不同的地方我已经用黄色的标注了
+注意: -P 要大写
+====================
+135、nova boot启动虚机参数
+[--nic <net-id=net-uuid,v4-fixed-ip=ip-addr,v6-fixed-ip=ip-addr,port-id=port-uuid
+其中，v4/6-fixed-ip不能单独配置，必须和net-id一起配置；再一个--nic中net-id与port-
+示例：
+根据Port-ID启动虚机：
+# neutron port-create  accd72eb-2cd0-4961-ad67-d028c92e5254  --fixed-ip ip_address=1.2.3.20
+
+# nova boot --flavor 100 --image 18f8b6e1-a957-4d94-a3dd-eca757afdeb9  \
+  --nic port-id=10e7e093-156e-402b-9a45-ff8ab13dfb03 test_vm_1
+启动虚机时指定网络，指定IP：
+# nova boot --flavor 100 --image 18f8b6e1-a957-4d94-a3dd-eca757afdeb9 \
+  --nic net-id=accd72eb-2cd0-4961-ad67-d028c92e5254,v4-fixed-ip=1.2.3.10 test_vm_2
+创建多网络虚机：
+# nova boot --flavor 100 --image 18f8b6e1-a957-4d94-a3dd-eca757afdeb9 \
+  --nic net-id=accd72eb-2cd0-4961-ad67-d028c92e5254 \
+  --nic net-id= 2125e96e-d2a3-42b3-931f-5a90149d0f90 test_vm_3
+
+nova支持对于active的虚机添加或删除网卡
+nterface-attach            Attach a network interface to a server.
+interface-detach            Detach a network interface from a server.
+interface-list              List interfaces attached to a server.
+用法：
+nova interface-attach [--port-id <port_id>] [--net-id <net_id>]
+                             [--fixed-ip <fixed_ip>]
+                             <server>
+nova interface-detach <server> <port_id>
+
+绑定一个端口、网络或者IP地址到虚机：
+nova interface-attach 06fd79d1-99a8-451d-955c-f466b8986f34 --port-id c310babc-c833-4b10-9d76-78d60a58af98
+将port-id从虚机解绑：
+nova interface-detach 8dd2fb5d-30a9-45c7-8931-ba039adcd20f  5138a9ce-7114-4126-82e8-8685a6aeccee
+
+或者
+nova interface-attach --net-id=38928bd2-b85e-4ea2-bd87-0c3896ef370c 28579a83-2f2d-44de-9a84-3236a691654f---->让网络自动分配ip
+
+==============
+136、
+在 Linux 里面有一个 e2fsck 的指令，可以检查及修复档案系统。它的参数包括有:
+-a: 检查 partition，如发现问题会自动修复。
+-b: 设定 superblock 位置。
+-B size: 指定 size 作为区块大小。
+-c: 检查 partition 是否有坏轨。
+-C file: 将检查结果储存到 file。
+-d: 输出 e2fsck debug 结果。
+-f: e2fsck 预设只会对错误的档案系统检查，加上 -f 是强制检查。
+-F: 在检查前将硬盘的 buffer cache 清空，避免发生错误。
+-l list: 记录了坏轨区块加入 list 中。
+-d : 打印 e2fsck 的 debug 结果。
+-f : 强制检查。
+-n: 以 (read-only) 开启档案系统
+-p: 关闭互动模式，如有问题自动修复，等同 -a。
+-v: 显示详细报告。
+-y: 
+
+使用例子
+检查 /dev/sda1 是否有问题，如发现问题便自动修复:
+e2fsck -a -y /dev/sda1
+执行 e2fsck 或 fsck 前请先 umount partition，否则有机会令档案系统毁损。
+如果需要对根目录 (/) 进行检查及修复，便需要进入 singal user mode 执行
+
+============
+137、
+resize2fs命令被用来增大或者收缩未加载的“ext2/ext3”文件系统的大小。如果文件系统是处于mount状态下，
+那么它只能做到扩容，前提条件是内核支持在线resize。，linux kernel 2.6支持在mount状态下扩容但仅限于ext3文件系统。
+resize2fs(选项)(参数）
+参数的值：
+设备文件名：增大要调整大小的文件系统所对应的设备文件名； 
+大小：文件系统的新大小
+
+缩减注意事项
+1、不能在线缩减，得先卸载；
+2、确保缩减后的空间大小依然能存储原有的所有数据；
+3、在缩减之前应该先强行检查文件，以确保文件系统处于一致性状态
+ 
+
+
+
+
+
+
+
+
+

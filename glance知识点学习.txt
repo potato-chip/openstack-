@@ -1,0 +1,252 @@
+参考网站：
+http://blog.csdn.net/ztsinghua/article/details/49741795
+Glance 命令行上传 image
+glance image-create –-name centos6.5 –-disk-format=qcow2 –-container-format=bare –-is-public=True –-file=/mnt/image/centos6.5.img
+
+各个参数解释：
+–-name NAME 上传完镜像在openstack中显示的名称；
+
+-–disk-format DISK_FORMAT 镜像格式；openstack支持的格式详情请看官方介绍；
+
+–container-format CONTAINER_FORMAT 图片的容器格式，可以是ami,ari,aki,ovf,bare默认是bare
+
+-–owner TENANT_ID 那个租户可以使用此镜像
+
+-–size SIZE 这个镜像的大小
+
+-–min-disk DISK_GB 这个镜像启动最小需要的大小；
+
+-–min-ram DISK_RAM 启动这个镜像需要的最小内存；
+
+-–location IMAGE_URL 在web界面中可以使用url地址上传镜像，目前支持http协议的；
+
+-–file FILE 镜像所在本地目录；
+
+-–checksum CHECKSUM 镜像数据验证；
+
+-–is-public [True|False] 是否共享此镜像；共享后其他用户也可以使用此镜像启动instance
+
+=====================
+grep知识点学习
+grep [-acinv] [--color=auto] '搜寻字符串' filename
+选项与参数：
+-a ：将 binary 文件以 text 文件的方式搜寻数据
+-c ：计算找到 '搜寻字符串' 的次数
+-i ：忽略大小写的不同，所以大小写视为相同
+-n ：顺便输出行号
+-v ：反向选择，亦即显示出没有 '搜寻字符串' 内容的那一行！
+--color=auto ：可以将找到的关键词部分加上颜色的显示喔！
+很实用的命令行
+ cat /etc/glance/glance-api.conf | grep -v "^$" | grep -v "^#"
+ 这个命令行的一个很实用的用途就是，显示出配置文件中都配置了那些参数项，
+ 也可以分别使用
+ cat /etc/glance/glance-api.conf | grep -v "^$" 
+ cat /etc/glance/glance-api.conf | grep -v "^#"
+====================
+glance是OpenStack管理镜像的一个组件，从web client上传的镜像或者从命令行上传的镜像默认保存到了/var/lib/glance/images/目录下
+
+cat /etc/glance/glance-api.conf | grep -v "^$" | grep -v "^#"
+filesystem_store_datadir=/var/lib/glance/images/    #这个参数中是显示的image存储目录
+=====================
+qemu-img命令行
+创建磁盘文件
+qemu-img create centos6.6.img 100G-----这个命令行创建的是系统盘的大小，不包括，系统挂的硬盘大小
+
+查看系统镜像的详细信息
+qemu-img info centos6.6.img       //默认为raw格式
+ image: centos6.6.img
+ file format: raw
+ virtual size: 100G (107374182400 bytes)
+ disk size: 0
+ 
+查看vnc的连接端口命令----------在虚机所在的物理节点上运行这个命令
+virsh vncdisplay 虚机的名字
+
+创建镜像的时候配置虚机的操作系统
+sed -i '/^HWADDR/d' /etc/sysconfig/network-scripts/ifcfg-eth0
+sed -i '/^UUID/d' /etc/sysconfig/network-scripts/ifcfg-eth0
+echo -n > /etc/udev/rules.d/70-persistent-net.rules
+echo -n > /lib/udev/rules.d/75-persistent-net-generator.rules
+#上面四条命令是为了用此系统做镜像，再建立虚拟机的时候，可以获得mac和IP。
+===========================
+使用ISO镜像制作适用于OpenStack的云镜像 
+1、创建一个空的镜像文件
+2、根据iso镜像和镜像文件，创建虚拟机
+3、配置操作系统，对一些网络参数进行配置
+4、关闭虚机
+4、转换镜像格式（将raw格式转为为qcow2格式），这是对创建镜像文件进行格式转化，在创建虚机的时候，系统文件写入到了这个镜像文件中
+qemu-img convert -O qcow2 centos6.6.img  centos6.6.qcow2
+如下操作命令
+1、创建一个空的镜像文件
+qemu-img create -f qcow2 centos-6.5.qcow2 5G
+2、创建虚拟机---------在启动虚机的时候，需要使用iso镜像
+virt-install  --name centos-6.5 --ram 1024 --cdrom=/var/www/webvirtmgr/images/CentOS-6.5-x86_64-bin-DVD1.iso  
+--disk path=/var/lib/libvirt/images/centos-6.5.qcow2 
+--graphics vnc,listen=0.0.0.0 --noautoconsole 
+--os-type=linux --os-variant=rhel6
+3、进入到虚机对虚机进行一些配置
+4、关闭虚机
+5、转化镜像格式
+==========================
+nova常用命令行
+nova backup命令
+通过创建一个backup类型的快照来备份虚拟机
+
+availability-zone-list
+列举所有的可用域信息
+
+cell-capacities
+得到一个指定cell的容量或者得到所有cell的容量
+
+cell-show
+显示一个指定cell的详细信息
+
+clear-password
+从元数据中清除admin密码，然而并不会修改虚拟机密码
+
+console-log
+获得一台虚拟机的操作台日志
+
+diagnostics
+获取虚拟机CPU、内存等的使用情况
+
+evacuate
+从坏的计算节点上修复虚拟机
+evacuate：虚拟机所在的host宕机了，可以使用evacuate将虚拟机在另外一个host上启起来，其实利用这个接口配合host监控工具，可以实现虚拟机的HA能力
+evacuate仅支持active和stopped状态的虚拟机，其他状态（paused，suspended等）的虚拟机是不支持的，
+这也就意味着其他状态的虚拟机遇到host故障的时候是无法恢复的
+
+get-password
+获取虚拟机的admin密码， 此操作调用元数据服务来请求元数据信息，并不是从虚拟机里读取其密码信息
+
+host-action
+开启、关闭或者重启计算节点。
+
+host-describe
+显示计算节点的描述信息。
+
+host-evacuate
+从坏的计算节点上修复所有虚拟机。
+
+host-evacuate-live
+将指定计算节点上的所有虚拟机热迁移到其他可用的计算节点上。
+
+host-list
+列举所有节点以及服务
+
+image-create
+通过虚拟机快照创建一个镜像
+
+instance-action-list
+显示对虚拟机的操作记录
+
+interface-list
+获取虚拟机上所有挂载的网卡。
+
+lock
+锁定虚拟机，非admin用户无法解锁被锁定的虚拟机
+
+migrate
+冷迁移
+
+live-migration
+热迁移
+
+rebuild
+关闭、重传镜像并重启虚拟机------------这个应该对应门户的更换操作系统的操作
+rebuild仅支持active和stopped状态的虚拟机。而且使用后端卷启动的虚拟机，rebuild之后系统盘不会发生变化
+rebuild和evacuate在底层的实现是一样的。其实想想也是，两个接口都需要重新创建虚拟机，唯一的区别是：
+rebuild在nova driver层调用还是spawn函数创建新的虚拟机，而后端卷启动的虚拟机，是不会跟glance打交道的，还是直接挂载系统盘。
+
+1、rebuild需要多做一步删除虚拟机的操作，而evacuate是直接创建新虚拟机。
+
+2、rebuild使用的镜像是接口指定的新的镜像（可以与老镜像相同），而evacuate使用的是虚拟机原来的镜像
+
+===================
+openstack快照实现：openstack并未采用virDomainSnapshotCreateXML()来实现快照，而是单纯的对虚拟机镜像做转换和拷贝，
+生成一个与虚拟机无关联的镜像，最后上传至glance中。这种快照不包含快照链信息，
+只保留disk信息，无法回滚至快照点，只能采用该快照镜像创建一个新的虚拟机
+=====================
+创建虚机时，创建空镜像的作用
+安装客户机（Guest）之前，我们需要创建一个镜像文件或者磁盘分区等来存储客户机中的系统和文件，
+创建一个镜像文件，然后让镜像文件作为客户机的硬盘，将客户机操作系统安装在其中
+qemu-system-x86_64 -m 2048 -smp 4 -boot order=cd -hda /root/centos-6.5-ckf4879.qcow2 -cdrom /root/CentOS-6.5-x86_64-bin-DVD1.iso
+这个命令虽然可以创建虚机，但是无法看到虚机的启动信息，需要跟vncserver服务一起使用才可以看到虚机启动的信息
+其中，-m 2048 是给客户机分配2048MB内存，-smp 4 是给客户机分配4个CPU，
+-boot order=dc 是指定系统的启动顺序为光驱(d: CD-ROM)、硬盘(c: hard Disk)，
+-hda ** 是分配给客户机的IDE硬盘（即前面准备的空镜像文件），
+-cdrom ** 是分配客户机的光驱
+
+=================
+virsh vncdisplay 2----这个2是虚机的vrish list下面的id号
+我们在镜像上启动一个虚拟机，这个镜像的大小就相当于这个虚拟机对应的磁盘空间大小。
+================
+qemu版本如果集成了kvm module模块，那么状态操作系统会很快，没有则会很慢，所用最好用高版本的qemu
+
+qemu方式直接启动（就是没有使用kvm module），这种方式会很慢
+qemu-system-x86_64 -m 3500 -smp 4  -boot d -hda /home/stack/vm_images/source_images.img 
+-cdrom /home/stack/vm_images/CentOS-7-x86_64-Minimal-1611.iso  -vnc ：1
+各参数详解
+-m 2048 是给客户机分配2048MB内存，
+-smp 4 是给客户机分配4个CPU，
+-boot order=dc 是指定系统的启动顺序为光驱(d: CD-ROM)、硬盘(c: hard Disk)，
+-hda ** 是分配给客户机的IDE硬盘（即前面准备的空镜像文件），
+-cdrom ** 是分配客户机的光驱
+-vnc ：1 设置将视频流输出到vnc管道，远端可以使用ip和vnc的端口，使用vnc viewer连接
+vnc服务的默认端口是5900，每启动一个虚机，都会在5900的基础上增加1，-vnc和：1之间是存在个空格的
+
+qemu带kvm方式启动
+qemu-system-x86_64 -m 3500 -smp 4 --enable-kvm  -boot d -hda /home/stack/vm_images/source_images.img -cdrom /home/stack/vm_images/CentOS-7-x86_64-Minimal-1611.iso -vnc ：1
+
+添加--enable-kvm参数，因为qemu已经集成了kvm module模块；
+======================
+查看qemu的版本
+qemu-img --help | grep version或者/usr/libexec/qemu-kvm -version
+================
+qemu/qemu-kvm/qemu-system-x86_64/qemu-x86_64/kvm命令的区别
+qemu启动qemu虚拟机的命令
+在老版本中有单独的qemu-kvm模块存在，结合qemu一起做虚拟机工作。在后续新版本中，已经将qemu-kvm模块完全合并到qemu中去。
+因此当需要使用kvm特性时候，只需要qemu-system-x86_64 启动命令中增加参数 --enable-kvm参数使能即可。
+qemu-x86_64这种命令是运行某种架构的程序，但这个程序不是虚机,仅仅模拟CPU
+qemu-system-x86_64是运行某种架构系统的虚拟机, 模拟整个PC
+qemu-kvm就是运行“qemu-system-x86_64 --enable-kvm”， 是一个脚本,运行虚机的时候启用kvm功能
+如果要开启kvm支持，需要使用qemu-kvm或者kvm命令
+QEMU-KVM是基于硬件虚拟化技术（例如Intel VT ，AMD SVM），并结合了QEMU提供设备虚拟化功能，来实现整个系统虚拟化
+KVM 只基于内核的虚拟化
+Qemu本身就是一种虚拟化，也是一种硬件仿真模拟器
+Qemu--kvm是Qemu针对于KVM做优化后和KVM的结合，性能比Qemu本身好很多
+QEMU是个完全独立的虚拟环境,QEMU本身可以不依赖于KVM，但是如果有 KVM的存在并且硬件(处理器)支持比如Intel VT功能，
+那么QEMU在对处理器虚拟化这一块可以利用KVM提供的功能来提升性能
+======================
+在openstack现有环境中，使用qemu-kvm创建一个镜像的命令行如下所示
+/usr/libexec/qemu-kvm -name ckf4879-create  ---/usr/libexec/qemu-kvm这个目录下执行qemu-kvm命令
+-m 2048 -smp 4 -enable-kvm  -boot d 
+-hda /root/source_images-ckf4879.img-----空镜像，相当于虚机的空硬盘
+-cdrom /root/CentOS-6.5-x86_64-bin-DVD1.iso------相当与物理的的光驱，从光驱启动，安装系统 
+-vnc :11----一定要注意冒号前面是有空格的
+
+启动一个虚机的命令行
+/usr/libexec/qemu-kvm -name ckf4879-create1 -m 2048 -smp 4 
+-hda /root/source_images-ckf4879.img ---------------前面制作的镜像，已经把系统放到硬盘里面了
+-vnc :12
+========================
+当nova.conf配置为virt-type=qemu时候，会使用qemu软件特性模拟生成虚拟机，但性能降低。
+当nova.conf配置为virt-type=kvm时候，首先会去查找qemu-kvm模块。如果存在qemu-kvm模块则直接使用此模块启动虚拟机。
+如果qemu-kvm模块找不到，则会去寻找qemu-system-x86_64，找到则用qemu-system-x86_64启动虚拟机，并使用kvm虚拟机特性及开启--enable-kvm特性参数
+========================
+kvm知识点
+
+1）.KVM是开源软件，全称是kernel-based virtual machine（基于内核的虚拟机）。
+2）.是x86架构且硬件支持虚拟化技术（如 intel VT 或 AMD-V）的Linux全虚拟化解决方案。
+3）.它包含一个为处理器提供底层虚拟化 可加载的核心模块kvm.ko（kvm-intel.ko或kvm-AMD.ko）。
+4）.KVM还需要一个经过修改的QEMU软件（qemu-kvm），作为虚拟机上层控制和界面。
+5）.KVM能在不改变linux或windows镜像的情况下同时运行多个虚拟机，（它的意思是多个虚拟机使用同一镜像）并为每一个虚拟机配置个性化硬件环境（网卡、磁盘、图形适配器……）。
+6）.在主流的Linux内核，如2.6.20以上的内核均已包含了KVM核心。
+==========================
+kvm 是linux内核包含的东西，使用qemu作为上层管理（命令行）
+qemu 全称Quick Emulator。是独立虚拟软件，能独立运行虚拟机（根本不需要kvm）。
+kqemu是该软件的加速软件。kvm并不需要qemu进行虚拟处理，只是需要它的上层管理界面进行虚拟机控制。
+虚拟机依旧是由kvm驱动。
+KVM虚拟机的创建依赖qemu-kvm
+
+ 

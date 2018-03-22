@@ -1,0 +1,267 @@
+paste deploy是用来发现和配置WSGI应用的一套系统，对于WSGI应用的使用者而言，可以方便地从配置文件汇总加载WSGI应用（loadapp）；
+对于WSGI应用的开发人员而言，只需要给自己的应用提供一套简单的入口点即可
+下面的词语每组内的等价：
+1. 应用，app，application；
+2. 过滤器，filter；
+3. 管道，pipeline；
+4. 工厂函数，factory；
+5. 组合， composite；
+6. 类型， type；
+7. 段， section
+
+一、PasteDeploy配置文件格式
+PasteDeploy配置文件由若干section组成，section的声明格式如下：
+[type:name]
+其中，方括号括起的section声明一个新section的开始，section的声明由两部分组成，section的类型（type）和section的名称（name），
+如：[app:main]等。section的type可以有：app、composite、filter、pipeline、filter-app等。
+每个section中具体配置项的格式就是基本的ini格式： key = value ，所有从PasteDeploy配置文件中提取的参数键、值都以字符串的形式传入底层实现。
+此外，PasteDeploy的配置文件中使用“#”标注注释
+
+二、PasteDeploy中section的不同type
+
+2.1　　Type = composite（组合应用）
+顾名思义，组合应用由若干WSGI应用组成，composite为这些应用提供更高一层的分配工作
+[composite:main]
+use = egg:Paste#urlmap
+/ = home
+/blog = blog
+/wiki = wiki
+/cms = config:cms.ini
+该段配置文件定义了一个名为main、类型为composite的section，方括号的声明以下是该section的具体配置，遵循 key = value 的统一格式。
+Composite类型的section将URL请求分配给其他的WSGI应用。 use = egg:Paste#urlmap 意味着使用 Paste 包中的 urlmap 应用。
+urlmap是Paste提供的一套通用的composite应用，作用就是根据用户请求的URL前缀，将用户请求映射到对应的WSGI应用上去。
+这里的WSGI应用有："home", "blog", "wiki" 和 "config:cms.ini"。
+最后一项仅仅是参考了同一个目录中的另一个文件"cms.ini"
+composite section：Request 进来后第一个通过的 Section，表示需要将一个 HTTP URL Request 调度到一个或者多种 Application 上。
+
+
+2.2　　Type = app（WSGI应用）
+application: 应用，符合WSGI规范的可调用对象，接受参数（environ,start_response）, 调用start_response返回状态和消息头，返回结果作为消息体
+[app:home]
+use = egg:Paste#static
+document_root = %(here)s/htdocs
+
+[app:wiki] 
+use = call:mywiki.main:application 
+database = sqlite:/home/me/wiki.db
+app类型的section声明一个具体的WSGI应用。调用哪个python module中的app代码则由use后的值指定。
+这里的 egg:Paste#static 是另一个简单应用，作用仅仅是呈现静态页面。它接收了一个配置项： document_root ，
+后面的值可以从全局配置[DEFAULT](大小写敏感)中提取，提取方法是使用变量替换
+PasteDeploy的配置文件中允许定义多个app类型的section，同时要求每个WSGI应用也都应该拥有自己的section。这样，每一个WSGI应用在配置文件中都有一个
+app类型的section与之对应，默认地，"main"应用对应于 app:main 或 app
+应用的具体实现要在section中配置，有两种方法专门用于指出应用对应的代码：使用URI（用use标识）或 直接指向实现代码（用protocol标识）
+2.2.1　　使用URI的方式
+采用该方法的特点是指出应用的实现代码的那一条 key = value 配置项采用"use"作为键，该方法也有许多变种，官方的示例中给出了一些介绍：
+[app:myapp]
+use = config:another_config_file.ini#app_name
+
+# 或任意URI:
+[app:myotherapp]
+use = egg:MyApp
+
+# 或指明某个模块中的可调用:
+[app:mythirdapp]
+use = call:my.project:myapplication
+
+# 甚至是其他的section:
+[app:mylastapp]
+use = myotherapp
+
+最后指向其他的section的那个例子，看起来似乎没有什么意义，似乎只是两个相同的WSGI应用。
+但是这样的定义允许我们在 [app:mylastapp] 这个应用中定义一些局部的配置项，从而在重用代码的同时覆写它引用的应用配置
+2.2.2　　直接指向应用的实现代码
+采用该方法的特点是指出实现代码的那一条 key = value 配置项采用“协议”作为键，所谓“协议”即protocol，告诉PasteDeploy即将加载的对象类型，
+[app:myapp]
+paste.app_factory = myapp.modulename:app_factory
+该例的protocol paste.app_factory 是一个应用的工厂函数，指明import对象的类型；值 myapp.modulename:app_factory 指明具体加载的模块和方法。
+
+2.3　　Type = filter（过滤器）
+filter：过滤器，可调用对象，类型python中的装饰器，接受一个application对象作为参数，返回一个封装后的application。
+filter是作用于WSGI应用上的函数或方法，以app为唯一的参数，并返回一个“过滤”后的app。归功于WSGI接口的规范，
+不同的filter可以依次“过滤”某一app，事实上多个filter处理一个app也就是下文中提到的管道（pipeline）。
+在PasteDeploy的配置文件中有多种方法来“过滤”应用
+[app:main]
+use = egg:MyEgg
+filter-with = printdebug
+
+[filter:printdebug] 
+use = egg:Paste#printdebug
+在 [app:main] 的 filter-with 字段指明用来处理该应用的filter，就指定了名为"printdebug"的filter来处理应用"main"。
+在 [filter:printdebug] 中还可以定义新的 filter-with 字段，从而将处理关系延续下去。
+
+2.4　　Type = filter-app
+同样是处理应用，在PasteDeploy配置文件中可以有着不同的写法，比如示例部分，就是使用filter-app类型的section来声明一个filter：
+[filter-app:blog] 
+use = egg:Authentication#auth 
+next = blogapp 
+roles = admin 
+htpasswd = /home/me/users.htpasswd 
+
+[app:blogapp]
+use = egg:BlogApp
+database = sqlite:/home/me/blog.db
+该部分采用了[filter-app:NAME]类型的section声明了一个filter，指定使用的代码，以及要处理的应用： next 字段的值。
+从而PasteDeploy会自动地将过滤器"blog"作用在应用"blogapp"上
+
+2.5　　Type = pipeline
+pipeline便于对一个应用添加多个过滤器
+[pipeline:main]
+pipeline = filter1 filter2 filter3 app
+就指定了在app上施加三个filter进行处理。
+总结起来，想要在某个应用前添加多个filter，共有 [filter-app:...]  [pipeline：...] 和 [app:...] filter-with = ... 等方法
+
+三、局部配置与全局配置
+PasteDeploy配置文件的所有配置项均使用 key = value 格式，但是局部配置项和全局配置项定义的位置不同
+[app:blog]
+use = egg:MyBlog
+database = mysql://localhost/blogdb
+blogname = This Is My Blog!
+
+[app:otherblog]
+use = blog
+blogname = The other face of my blog
+每一个section内设置具体的键值关系，构成这些section自己的局部配置
+为了便于不同的应用读取某些固定的系统信息，PasteDeploy允许设置全局配置变量，所有的全局配置必须放在[DEFAULT]字段下设置
+[DEFAULT]
+admin_email = webmaster@example.com
+
+[app:main]
+use = ...
+set admin_email = bob@example.com
+注意[DEFAULT]段名是大小写敏感的，因此必须严格大写
+
+3.2　　局部配置和全局配置的覆写
+[app:blog]
+use = egg:MyBlog
+database = mysql://localhost/blogdb
+blogname = This Is My Blog!
+
+[app:otherblog]
+use = blog
+blogname = The other face of my blog
+从2.2.1中已经知道，一些section可以直接复用其他section的代码，并定制配置信息，这里 [app:otherblog] 就采用了 [app:blog] 的代码，
+同时将配置项 blogname 改为自己特定的
+另一方面，应用在本地可以修改全局配置项的值
+[DEFAULT]
+admin_email = webmaster@example.com
+
+[app:main]
+use = ...
+set admin_email = bob@example.com
+只需要在要覆写的键前加 set 即可。
+至于为什么要探讨局部配置与全局配置，是因为二者在传递给不同类型的factory function时对应的参数不同
+
+四、实现factory函数
+PasteDeploy中的若干种“协议”，事实上对应了实现时的不同类型，
+包括 paste.app_factory  paste.composite_factory  paste.filter_factory  paste.server_factory 等。
+这些“协议”的 value 都必须是一个可调用（函数、方法、类、可调用对象等）。
+这些“协议”封装WSGI应用，使其成为app、composite、filter等类型的组件
+4.1　　paste.app_factory
+这是最常见的factory，接收配置参数，用来返回一个WSGI应用，第三部分中介绍的全局配置以字典的形式传入，
+局部配置则以关键字参数（keyword arguments）的形式传入。
+def app_factory(global_config, **local_conf):
+    return wsgi_app
+
+4.2　　paste.composite_factory
+def composite_factory(loader, global_config, **local_conf):
+    return wsgi_app
+是不是与 app_factory 非常相似，composite的factory函数就是在app factory的基础上增加了 loader 参数，该参数有一些方法，
+比如 get_app(name_or_uri, global_conf=None) 返回指定名称的WSGI应用， get_filter 、 get_server 也有着类似的作用。
+Python split()通过指定分隔符对字符串进行切片
+str.split(str="", num=string.count(str)).
+    str -- 分隔符，默认为所有的空字符，包括空格、换行(\n)、制表符(\t)等。
+    num -- 分割次数。
+	返回分割后的字符串列表
+	
+4.3　　paste.filter_factory	
+filter factory与app factory非常相似，只是返回filter而不是WSGI app。filter必须是可调用的，接收WSGI app为唯一的参数，返回处理过的该app
+
+4.4　　paste.filter_app_factory
+与filter_factory 非常相似，只是接收和返回的均为WSGI app，没有filter。
+
+4.5　　paste.server_factory
+返回WSGI server。WSGI server接收唯一的参数——WSGI app，并为其服务
+
+4.6　　paste.server_runner
+与paste.server_factory 类似，只是WSGI app应该以第一参数传入，同时返回的server要立即运行。
+====================
+深层知识
+composite
+[composite:main]             
+use = egg:Paste#urlmap       
+/v2.0 = public_api           
+/v3 = api_v3
+/ = public_version_api
+
+[composite:admin]
+use = egg:Paste#urlmap
+/v2.0 = admin_api
+/v3 = api_v3
+/ = admin_version_api
+
+composite section：Request 进来后第一个通过的 Section，表示需要将一个 HTTP URL Request 调度到一个或者多种 Application 上。
+paste.ini 中有两种类型的 [composite：main|admin]。Request 会通过哪一个 composite 由请求 URL 的端口或者 name 参数来决定，下面会有介绍。
+use：是一个关键字，指定处理请求的代码，这里表示我们使用 Paste egg包中 urlmap 来实现 composite 请求分发方式。 ==> 决定请求的分发方式为 urlmap(urlmap 算是一个通用的请求分发程序)
+/v2.0 /v3 /：是 urlmap 进行分发时，需要使用到的参数。 URL为 /v3 开头的请求会路由给 pipeline api_v3 处理(也可以直接是一个 app section)
+egg 是 python 的一个包
+
+pipeline
+pipeline section : 指定的 section 有如下要求：
+1.最后一个名字对应的 section 一定要是一个 app 类型。
+2.非最后一个名字对应的 section 一定要是一个 filter 类型。
+
+DEFAULT
+全局配置主要是用于多个 app 共用一些变量，可以被覆盖，需要在 app 中重新定义
+[DEFAULT]
+admin_email = webmaster@example.com
+[app:main]
+use = ...
+set admin_email = jmilkfan@example.com
+
+server
+[server:main]: 定义WSGI的一个server。
+
+app
+app: 一个 app 就是一个实现主要功能的具体的 application 。所以 app 必须是 Callable Object 类型，接受的参数(environ,start_response)，
+这是WSGI Server交给Application的符合WSGI规范的参数。
+Application 需要完成的任务是响应 envrion 中的请求，准备好响应头 headers 和消息体 body，然后交给 start_response 处理，返回响应消息体。
+
+====================
+Request 被 paste.ini 处理的流程
+WSGI Server(Web Server) 接受到 URL_Path 形式的 HTTP Request 时，这些 Request 首先会被 Paste 模块按照配置文件 paste.ini 进行处理。
+
+处理的过程为：
+1. composite(将Request将URL_Path的前缀(/v2.0 /v3 /)和一个Application(app/filter)进行映射。然后将Request转发到pipeline或app中，
+最终会到达指定的 Application)
+2. ==> pipeline(包含了filter和app)
+3. ==> filter(调用Middleware对Request进行过滤)
+4. ==> app(具体的Application来实现Request的操作) 。
+这个过程就是将 Application 和 Middleware 串起来的过程，不一定要按照顺序执行，只要能到达 Application 即可
+
+EXAMPLE: Keystone Request URL 为 http://homename:35357/v3/auth/tokens
+    Step1. （hostname:35357）： 这一部分由 Web Server 来获取并处理的(EG.虚拟机功能)。
+
+    Step2. （/v3/auth/tokens）: 根据 paste.ini 中的配置来对剩下的 URL（/v3/auth/tokens）部分进行处理。
+	首先请求的 Post=35357 决定了会经过 [composite:admin] section 。（一般是admin监听35357端口，main监听5000端口；
+	也可以由 application = wsgi_server.initialize_application(name) 中 name 参数来决定）
+
+    Step3. （/v3）: composite section 会根据 /v3 这个 URL 前缀来决定将 Request 路由到哪一个 pipeline secion，
+	这里就把请求转发给 [pipeline:api_v3] 处理，转发之前，会把 /v3 这个部分的 URL 去掉。
+
+    Step4. （/auth/tokens） : [pipeline:api_v3] 收到请求，URL_Path是 （/auth/tokens），然后开始调用各个 filter(中间件) 来处理请求。
+	最后会把请求交给 [app:service_v3] 进行处理。
+
+    Step5. （/auth/tokens）: [app:service_v3] 收到请求，URL_Path是 (/auth/tokens)，
+	最后交由的 WSGI Application:keystone.service:v3_app_factory 去处理。
+
+注意：剩下的URL后缀 /auth/tokens 则交由另一个模块 Routers 来处理
+
+如何加载 paste.ini 配置文件？
+使用 Paste.Deploy 模块，
+Paste Deploy是一种机制，通过核心函数 loadapp() 函数和一个 paste.ini 配置文件或者 Paste egg 包来载入 WSGI Application。
+===================
+
+
+
+
+

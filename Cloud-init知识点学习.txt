@@ -1,0 +1,414 @@
+Cloud-init知识点学习
+http://blog.csdn.net/juvxiao/article/details/22664457
+https://www.ibm.com/developerworks/cn/cloud/library/1509_liukg_openstackmeta/------看完
+http://blog.csdn.net/u010774286/article/details/44902877------看完了
+http://blog.csdn.net/juvxiao/article/details/22664457---看完了
+学习中的疑问
+1、cloud-init是一个脚本，那么这个脚本是在制作镜像的时候，写入的，还是opentsack在启动虚机的时候，写入的？
+2、cloud-init运行的四个阶段分别做什么？
+3、clouds-init模块的运行模式是什么？各个运行模式的区别点
+4、在虚机和宿主机中都没有找到/etc/cloud/cloud.cfg这个文件，说明，openstack采用了另一种配置方式，
+使用了数据源user_data的方式，对虚机进行的配置，这个是如何进行配置的呢？
+5、openstack采用了哪种user_data格式？
+6、如果采用driver_config方式，openstack是不是采用的是cdrom启动的方式？
+7、DHCP 协议的选项 121 协议做什么用的？
+8、虚机在什么阶段启动请求meta-data数据？
+=======
+自学知识点
+1、cloud-init用于在创建虚拟机时通过元数据服务对虚拟机基本配置，包括常见的主机名，用户，密码等等。
+同时用户可以通过user_data自定义一些数据对虚拟机进行配置，可以有配置文件cloud-config或者直接给定脚本，
+支持常见的shell cmd python脚本
+
+2、
+cloud-init 是一个能够激活和初始化虚拟机的脚本，在虚拟机启动的时候，对虚拟机进行操作，他的功能很强，广泛适用于 OpenStack
+
+3、
+cloudinit是专为云环境中虚拟机的初始化而开发的工具，它从各种数据源读取相关数据并据此对虚拟机进行配置。
+常见的数据源包括：云平台的metadata服务、ConfigDrive等，常见的配置包括：设定虚拟机的hostname、hosts文件、
+设定用户名密码、更新apt －get的本地缓存、调整文件系统的大小（注意不是调整分区的大小）等
+
+4、cloud-int的配置文件/etc/cloud/cloud.cfg
+配置文件大致分为两部分，开头的变量/参数定义部分、后边要运行的模块列表（包括三大类cloud_init_modules、cloud_config_modules、cloud_final_modules）
+各模块在运行时，会根据之前定义的变量/参数的值，配置虚拟机的状态
+
+5、模块的简单举例
+update_etc_hosts模块
+顾名思义，该模块用来设置主机的hosts文件，其中就用到了hostname、fqdn、manage_etc_hosts等变量的值。
+模块首先尝试从cloudinit的配置文件中读取这些变量的值，如果没有定义，则尝试从其他的数据源中获取变量的值，
+例如对于openstac来讲，可以从metadata service（http://169.254.169.254/latest/meta-data/hostname）获取虚拟机的主机名
+
+6、cloud-init的运作流程
+cloudinit会在虚拟机启动的过程中分四个阶段运行，按照时间顺序分为：cloud-init-local, cloud-init, cloud-config, cloud-final
+cloud-init-local阶段主要是运行本地的一些初始化脚本
+cloud-init阶段执行配置文件中名为cloud_init_modules下的所有模块，如果模块列表为空，则什么都不运行
+分阶段执行的必要性在于，有些模块的执行对系统当前的状态会有要求（比如网络ready、文件系统挂载over），
+因此cloudinit抽象出了四个阶段，编写自己的初始化模块时可以根据情况归入不同的阶段
+模块有多种运行模式，包括per-once、per-instance、per-always，对于模式为per-once的模块，
+一旦运行完毕会在一个名为sem的目录中创建一个信号文件，从而防止模块的在下次启动时重复运行
+scripts-user，该模块负责执行userdata中的user scripts内容以及其他模块（如runcmd）生成的脚本，
+因此cloudinit的配置文件将其放在了cloud_final_modules阶段的近乎最后
+
+7、
+控制cloudinit配置行为的方式有两种：cloudinit的配置文件(/etc/cloud/cloud.cfg)和数据源（如openstack及ec2中的userdata）
+
+8、cloud-init的一些用法
+为了解决云平台中的初始化问题，人们设计了cloudinit，它驻留在虚拟机中，随机启动，
+根据配置文件和云平台提供的userdata进行相关配置，目前支持多种文件内容格式，包括单纯的用户脚本，
+引入的cloud-config、include file等。cloudinit其实就是驻留在虚拟机中的一个agent，
+唯一不同的是它仅仅在系统启动时运行，不会常驻系统。假稍作修改，cloudinit其实也可以作为虚拟机的agent，
+能做的就不仅仅是初始化了。例如，可以批量配置虚拟机（安装软件，更新系统，修改密码等），可以作为监控的agent等。
+
+===============
+额外知识点
+对nova boot下面三个参数的介绍
+--meta <key=value>  
+Record arbitrary key/value metadata to /meta_data.json on the metadata server. Can be specified multiple times.
+--user-data <user-data>       user data file to pass to be exposed by the metadata server
+--config-drive <value>        Enable config drive
+
+metadata和userdata功能，提供向虚拟机注入信息的机制
+
+metadata和userdata的区别和应用场景
+metadata 是 key/value的方式，长度控制在 255 字符，重点在提供，比如 IP,安全组等；
+而 userdata 多是脚本的方式，重点在配置，比如提供shell脚本，设置root用的密码等等；
+
+launch（boot）虚拟机时传入的参数不同，metadata 使用 –meta，key和value的长度控制在255个字符，
+而userdata使用–user-data，使用文件传入，dashboard上直接上内容；
+(metadata用与虚机第一次启动过程中，userdata在虚机启动起来以后，也可以进行修改)
+userdata一旦虚拟机launched，虚拟机运行过程中无法进行修改，且仅适用在launch阶段，
+后续的重启都不会运行，而metadata在nova有独立的RESTful API 接口，可在虚拟机运行过程中动态修改；
+
+metadata 在OpenStack中会放置在meta服务器上或者虚拟机内部，分光驱方式和修改镜像方式，需要虚拟机用户主动去获取，
+而userdata则是由cloudinit软件执行，在虚拟机launch时运行
+
+配置和使用
+ userdata 无需特殊配置，metadata需要特殊的配置
+ 如果使用镜像服务器的话，还有可能配置 neutron-dhcp-agent 的配置文件
+（沃云环境里面，是对这个配置文件进行了配置，也从另一个侧面说明了，我使用了镜像服务器）
+ vi /etc/neutron/dhcp_agent.ini
+enable_isolated_metadata = True
+enable_metadata_network = True
+
+**************************
+这部分内容，以后待验证
+虚拟机内存放位置
+需要介绍3中注入方式
+    镜像修改方式，以 meta_data.json 文件存放在虚拟机/目录下。
+    光驱注入方式，以 meta_data.json 文件存放在光驱设备中，需要 mount /dev/sr0 /mnt; /mnt/openstack/latest/meta_data.json。
+    meta服务器方式，nova-api 服务集成了此服务器，通过 RESTful API，直观点，nova meta/host-meta 均可以设置虚拟机的meta，
+	存放在nova数据库的instance_metadata中，虚拟机使用 curl http://169.254.169.254 来获取。
+
+userdata
+2中注入方式
+    镜像修改方式，以 user_data.json 文件存放在虚拟机/目录下。
+    光驱注入方式，以 user_data.json 文件存放在光驱设备中，需要 mount /dev/sr0 /mnt; /mnt/openstack/latest/user_data.json。
+**********************
+Metadata知识点
+metadata概念
+在创建虚拟机的时候，用户往往需要对虚拟机进行一些配置，比如：开启一些服务、安装某些包、添加 SSH 秘钥、配置 hostname 等等。
+在 OpenStack 中，这些配置信息被分成两类：metadata 和 user data。Metadata 主要包括虚拟机自身的一些常用属性，
+如 hostname、网络配置信息、SSH 登陆秘钥等，主要的形式为键值对。而 user data 主要包括一些命令、脚本等。
+User data 通过文件传递，并支持多种文件格式，包括 gzip 压缩文件、shell 脚本、cloud-init 配置文件等。
+虽然 metadata 和 user data 并不相同，但是 OpenStack 向虚拟机提供这两种信息的机制是一致的，
+只是虚拟机在获取到信息后，对两者的处理方式不同罢了
+
+Metadata 的获取机制
+在 OpenStack 中，虚拟机获取 Metadata 信息的方式有两种：Config drive 和 metadata RESTful 服务
+
+Config drive机制
+Config drive 机制是指 OpenStack 将 metadata 信息写入虚拟机的一个特殊的配置设备中，然后在虚拟机启动时，
+自动挂载并读取 metadata 信息，从而达到获取 metadata 的目的。在客户端操作系统中，
+存储 metadata 的设备需要是 ISO9660 或者 VFAT 文件系统。具体的实现会根据 Hypervisor 的不同和配置有所差异，
+以 libvirt 为例：OpenStack 会将 metadata 写入 libvirt 的虚拟磁盘文件中，并指示 libvirt 将其虚拟为 cdrom 设备
+另一方面，虚拟机在启动时，客户操作系统中的 cloud-init 会去挂载并读取该设备，然后根据所读取出的内容对虚拟机进行配置
+（虚机应该是cdrom这个介质进行启动）
+
+实现上述功能，需要宿主机和虚拟机镜像两者协同完成，它们需要各自满足一些条件
+
+宿主机（OpenStack 的计算节点）
+支持 config drive 机制的 Hypervisors 有：libvirt、hyper-v 和 VMware。当使用 libvirt 和 VMware 作为 Hypervisor 时，
+需要确保宿主机上安装有 genisoimage 程序，并且设置 mkisofs_cmd 标志为 genisoimage 的位置。
+当使用 hyper-v 作为 Hypervisor 时，需要设置 mkisofs_cmd 标志为 mkisofs.exe 的全路径，
+此外还需要在 hyper-v 的配置文件中设置 qume_img_cmd 为 qemu-img 命令的路径
+小知识点：
+ linux mkisofs(genisoimage)命令用法---建立ISO 9660映像文件
+ （很显然沃云不是使用的这个方式）
+虚拟机镜像
+虚拟机镜像需要确保安装了 cloud-init。如果没有安装 cloud-init，需要自行编写脚本，
+实现在虚拟机启动期间挂载配置磁盘、读取数据、解析数据并且根据数据内容执行相应动作
+
+配置虚机启动使用config driver的方法，如下两种
+方法1、
+OpenStack 提供了命令行参数--config-drive 用于配置是否在创建虚拟机时使用 config drive 机制
+nova boot --config-drive=true --image image-name --key-name mykey --flavor 1 --user-data 
+./my-user-data.txt myinstance --file /etc/network/interfaces=/home/myuser/instance-interfaces
+方式2、
+在/etc/nova/nova.conf 中配置，使得 OpenStack 计算服务在创建虚拟机时默认使用 config drive 机制
+force_config_drive=true
+
+Metadata RESTful 服务机制
+OpenStack 提供了 RESTful 接口，虚拟机可以通过 REST API 来获取 metadata 信息。
+提供该服务的组件为：nova-api-metadata。当然，要完成从虚拟机至网络节点的请求发送和相应，
+只有 nova-api-metadata 服务是不够的，此外共同完成这项任务的服务还有：Neutron-metadata-agent 和 Neutron-ns-metadata-proxy
+
+Metadata RESTful 服务机制的工作原理
+Nova-api-metadata
+nova-api-metadata 启动了 RESTful 服务，负责处理虚拟机发送来的 REST API 请求。
+从请求的 HTTP 头部中取出相应的信息，获得虚拟机的 ID，继而从数据库中读取虚拟机的 metadata 信息，最后将结果返回
+
+Neutron-metadata-agent（书响说的agent服务，是负责具体的功能业务的进程）
+Neutron-metadata-agent 运行在网络节点，负责将接收到的获取 metadata 的请求转发给 nova-api-metadata。
+Neutron-metadata-agent 会获取虚拟机和租户的 ID，添加到请求的 HTTP 头部中。
+nova-api-metadata 会根据这些信息获取 metadata
+
+Neutron-ns-metadata-proxy
+Neutron-ns-metadata-proxy 也运行在网络节点。为了解决网络节点的网段和租户的虚拟网段重复的问题，
+OpenStack 引入了网络命名空间。Neutron 中的路由和 DHCP 服务器都在各自独立的命名空间中。
+由于虚拟机获取 metadata 的请求都是以路由和 DHCP 服务器作为网络出口，
+所以需要通过 neutron-ns-metadata-proxy 联通不同的网络命名空间，
+将请求在网络命名空间之间转发。Neutron-ns-metadata-proxy 利用在 unix domain socket 之上的 HTTP 技术，
+实现了不同网络命名空间之间的 HTTP 请求转发。
+并在请求头中添加’X-Neutron-Router-ID’和’X-Neutron-Network-ID’信息，
+以便 Neutron-metadata-agent 来辨别发送请求的虚拟机，获取虚拟机的 ID
+
+虚拟机获取 metadata 的大致流程为：首先请求被发送至 neutron-ns-metadata-proxy，
+此时会在请求中添加 router-id 和 network-id，然后请求通过 unix domian socket 被转发给 neutron-metadata-agent，
+根据请求中的 router-id、network-id 和 IP，获取 port 信息，从而拿到 instance-id 和 tenant-id 加入请求中，
+最后请求被转发给 nova-api-metadata，其利用 instance-id 和 tenant-id 获取虚拟机的 metadata
+
+虚拟机如何将请求发送至 neutron-ns-metadata-proxy？
+ metadata 服务的地址为 169.254.169.254:80，虚拟机会向 169.254.169.254:80 发送 medtadata 请求，
+ 从虚拟机中发送出来这个请求，通过两种方式：通过 router 发送请求或通过 DHCP 发送请求
+
+方式1：通过 router 发送请求
+如果虚拟机所在 subnet 连接在了 router 上，那么发向 169.254.169.254 的报文会被发至 router。
+Neutron 通过在 router 所在网络命名空间添加 iptables 规则，将该报文转发至 9697 端口，
+而 neutron-ns-metadata-proxy 监听着该端口，所以报文被 neutron-ns-metadata-proxy 获取，进入上述后续处理和转发流程
+
+方式2：通过 DHCP 发送请求
+如果虚拟机所在 subnet 没有连接在任何 router 上，那么请求则无法通过 router 转发。
+此时 Neutron 通过 DHCP 服务器来转发 metadata 请求。DHCP 服务通过 DHCP 协议的选项 121 来为虚拟机设置静态路由
+通过查看虚拟机的静态路由表，我们可以发现发送至 169.254.169.254 的报文被发送到了DHCP 服务器。
+查看 DHCP 服务器的 IP 配置信息，发现 DHCP 服务器配置了两个 IP，其中一个就是 169.254.169.254。
+与 router 类似的，Neutron 在 DHCP 网络命名空间中启动了监听 80 端口的 neutron-ns-metadata-proxy 服务，从而进入处理和转发请求的流程
+（沃云环境中，metal-data方式使用的dhcp方式，在虚机里面ping 169.254.169.254地址是可以ping通的，同时在dhcp namespace空间上，查看9697安全组规则
+发现，没有这个规则，说明hdcp这种方式，没有使用安全组规则转到9697这个端口上，跟路由的方式不一样）
+meta_data两种方式的应用场景
+Config drive 机制主要用于配置虚拟机的网络信息，包括 IP、子网掩码、网关等。
+当虚拟机无法通过 DHCP 正确获取网络信息时，config drive 是获取 metadata 信息的必要方式。
+如果虚拟机能够自动正确配置网络，那么可以通过 RESTful 服务的方式获取 metadata 信息。
+
+=======================
+小知识点：
+nova-api-metadata 是 nova-api 的一个子服务，它是 metadata 的提供者，instance 可以通过 nova-api-metadata 的 REST API 来获取 metadata 信息。
+nova-api-metadata 运行在控制节点上，服务端口是 8775
+nova-api-metadata 的程序名称就是 nova-api，nova-api-metadata 与常规的 nova-api 服务是合并在一起的。不过，不同版本，可能不一样
+nova.conf 通过参数 enabled_apis 指定是否启用 nova-api-metadata
+例如：enabled_apis=ec2,osapi_compute,metadata
+osapi_compute 是常规的 nova-api 服务，metadata 就是 nova-api-metadata 服务
+默认配置下，neutron-ns-metadata-proxy 是由 L3_agent 管理的
+虚机中关于169.254.169.254的路由，是OpenStack 自动添加到 instance 中的
+neutron-ns-metadata-proxy 的监听端口9697 端口
+OpenStack 默认通过 l3-agent 创建和管理 neutron-ns-metadata-proxy。但不是所有环境都有 l3-agent，
+比如直接用物理 router 的场景。这时就需要让 dhcp-agent 来管理 neutron-ns-metadata-proxy
+==========================
+openstack的原生门户里面，在门户创建一个虚拟机，并给这个虚拟机起一个新的名字，在登录上虚机以后，查看虚拟机的名字发现更改为自己输入的名字了，
+这个名字的修改方式，有可能是使用了metadata的方式进行修改的
+==========================
+通过dhcp的方式请求数据的过程
+通过设置/etc/neutron/dhcp_agent.ini文件中的，metadata的相关参数，重启 dhcp-agent 后，可以看到控制节点上多了一个 neutron-ns-metadata-proxy 进程
+--network_id 关联到 test_net，这就是 dhcp-agent 启动的 neutron-ns-metadata-proxy，
+用于接收 test_net 网络上 instance 的 metadata 请求。每一个 network 都有一个与之对应的 neutron-ns-metadata-proxy。
+dhcp-agent 会在虚机总添加进去的一条路由
+==========================
+小知识点
+Compute可以生成随机管理员（root）密码，并将该密码注入到一个实例中。 如果启用此功能，用户可以将ssh运行到没有ssh密钥对的实例。
+Password injection on libvirt-based hypervisors
+For hypervisors that use the libvirt back end (such as KVM, QEMU, and LXC), 
+admin password injection is disabled by default. To enable it, set this option in /etc/nova/nova.conf:
+[libvirt]
+inject_password=true
+
+When enabled, Compute will modify the password of the admin account by editing the /etc/shadow file inside the virtual machine instance
+==========================
+config driver的方式
+如果 instance 无法通过 metadata service 获取 metadata（无 DHCP 或者 nova-api-metadata 服务），
+instance 还可以通过 config drive 获得 metadata。
+config drive 是一个特殊的文件系统，OpenStack 会将 metadata 写到 config drive，
+并在 instance 启动时挂载给 instance。如过 instance 安装了 cloud-init，config drive 会被自动 mount 
+并从中读取 metadata，进而完成后续的初始化工作
+config drive需要结合clout-init使用 
+配置方式
+config drive 默认是 disable 的，所以首先得启用。有两种方法启用 config drive：
+启动 instance 时指定 --config-drive true。
+在计算节点的 /etc/nova/nova.conf 中配置 force_config_drive = true，这样部署到此计算节点的 instance 都会使用 config drive。
+config drive 支持两种格式，iso9660 和 vfat，默认是 iso9660，但这会导致 instance 无法在线迁移，
+必须设置成 config_drive_format=vfat 才能在线迁移，这一点需要注意。
+配置完成后，重启 nova-compute 服务。
+（通过时间的查看信息，config device设备里面，查看它的具体内容，可以看到是一些json文件）
+在用命令行
+nova boot ckf4879-test-120 --flavor=d866ce28-b8ac-49a8-b8d9-e6142cf1af84 --nic net-id=9ef58b11-7583-4868-83d4-97acda50ae9d --image=49680b2a-f02f-4c9b-a651-5123a9ef03a0 --config-drive=true
+启动虚机的时候，添加上--config-drive true参数，那么创建完虚机以后，你就可以在虚机的目录下查看到，增加了disk.config设备
+===============
+lsblk 查看块设备
+=============
+cloud-init
+cloud-init 是 linux 的一个工具，当系统启动时，cloud-init 可从 nova metadata 服务或者 config drive 中获取 metadata，
+完成包括但不限于下面的定制化工作：
+设置 default locale
+设置 hostname
+添加 ssh keys到 .ssh/authorized_keys
+设置用户密码
+配置网络
+安装软件包
+
+cloud-init 会按 4 个阶段执行任务：
+local
+init
+config
+final
+cloud-init 安装时会将这 4 个阶段执行的任务以服务的形式注册到系统中
+local 阶段
+作为 cloud-init 执行的第一个阶段，此时 instance 还不知道该如何配置网卡，
+cloud-init 的任务就是从 config drive 中获取配置信息，然后写入 /etc/network/interfaces 文件
+（如果是 centos 则写入 /etc/sysconfig/network-scripts/ifcfg-xxx）。
+如果没有 config drive，则将所有网卡配置成 dhcp 模式
+(只有当网卡正确配置后，才能获取到 metadata)
+
+init, config 和 final 阶段
+正常情况下，在这三个阶段执行之前 instance 网络已经配置好了，并且已经成功获取到 metadata。
+cloud-init 的配置文件 /etc/cloud/cloud.cfg 定义了三个阶段分别要执行的任务，任务以 module 形式指定
+
+instance 真正的定制工作就是由这些 module 完成的。module 决定做哪些定制化工作，而 metadata 则决定最终定制化的结果。
+
+举个例子，如果 cloud.cfg 中指定了 set_hostname 这个 module，则意味着 cloud-int 会设置 instance 的主机名，
+而具体设置成哪个主机名则由 metadata 中 hostname 参数决定。
+有些 module 是有默认行为的，比如 growpart，如果 metadata 中没有特别指定，它会自动扩展 / 分区。
+===================
+虚拟机启动时候需要注入hostname、password、public-key、network-info之类的信息，以便虚拟机能够被租户管理。
+对于这些信息的注入openstack提供了两种方式， guestfs-inject以及metadata-server。
+guestfs-inject的使用很受限制尤其是并不是所有镜像都能够支持这种方式，I版本也以及取消了这种方式；
+metadata-server使用上更为灵活，但是他们都依赖镜像内部必须装有cloud-init组件
+===================
+cloud-init一个重要的应用是在OpenStack镜像中使用 Config Drive 数据源。实现创建instances时hostname、root密码、用户信息、网络信息等metadata的注入
+这个cloud-init组件，在镜像中已经做进去了，虚机启动的时候，这个组件就可以起作用，对虚机进行配置
+
+cloud-init的配置数据：
+cloud-init的配置数据分为：user data 和 metadata
+user data典型的包括：files, yaml, and shell scripts
+Shell scripts (以 #! 开头)
+Cloud config files (以 #cloud-config 开头)
+metadata典型的包括：server name, instance id, display name and other cloud specific details
+
+cloud-init的数据源
+EC2
+①EC2是cloud-init使用最早的和最广泛的数据源，通常通过 169.254.169.254 这个ip向虚拟机提供服务，
+它是一个http server，虚拟机通过这个http server获取到instance的userdata和metadata
+
+Config Drive
+Config Drive支持OpenStack configuration drive 。有version 1 和 version 2 ，目前是version 2。
+在version 2中，如果要成为config drive需要下面的几个条件：
+      1、config drive必须是vfat或者iso9660或者config-2的文件系统label
+      2、一定是一个没有被分区的block device（/dev/vdb, 而不是/dev/vdb1）
+      3、config drive将通常出现下面几个文件：
+	  
+Alt cloud
+
+No cloud
+
+MAAS
+
+CloudStack
+
+OVF
+
+Fallback/None
+
+镜像中安装cloud-init，cloud-init使用Config Drive
+OpenStack中测试步骤如下
+1、 注释掉nova.conf文件中metadata配置：
+增加Config Drive配置:
+2、重启nova-api等nova服务
+在nova-compute节点也要同样的配置。
+3、 注入user-data
+root用户密码 和 主机名
+例如：
+
+vi user-data
+#cloud-config
+chpasswd:
+list: |
+
+   root:123456
+
+expire: False
+
+ssh_pwauth: True
+hostname: zhaowei 
+使用定义好的user-data文件创建instances：
+nova boot --flavor 1 --image e20401a0-62e7-49b3-8a84-36d987b330f7  
+--nic net-id=4b708a95-b715-4dd8-9adc-abfff4320608 
+--user-data ./user-data.txt  vm1 
+
+--user-data可以以文件的形式注入用户自己的设置参数，这些参数在文件中以一定的格式
+进行呈现，传入给程序，最后程序进过一定的过程，就把这些参数，传递给Config Drive设备了，
+从而使用Config Drive设备对虚机进行设置
+
+给cloud-init传入用户输入参数的时候，可以使用下面的参数，进行传递，从而cloud-init获取到用户输入的这些值，对虚机进行设置
+利用 --user-data 、--key-name、-meta 等参数传输数据；
+
+--user-data ：指定脚本配置，实现修改密码等操作。
+
+--key-name ：指定密钥对name，实现无密码登陆
+
+-meta ：写入元数据。
+user-data和meta这两种参数方式，都是把用户输入的实际配置数据，传递给metadata server，metadata server把这些用户输入的这些数据
+存储起来，等着虚机里面cloud-init组件的获取，从而对虚机进行配置
+
+创建虚机命令：
+
+nova boot powerkvm --flavor 6 --image a48c96fd-d49a-4d0d-b6d9-1ddec52b65ba   
+ --nic net-id=f4889f14-33ab-4345-b480-92db1d411a67 
+ --key-name key1 --user-data /root/img/pass.txt
+ --meta abc=def
+=================
+在制作包含有cloud-init组件的镜像时，这个cloud-init的镜像是需要自己去特殊的定制的，对cloud-init里面的各个配置参数进行修改设置，从而
+定制出自己的cloud-init镜像
+使用config-drive方式修改密码的一个实例
+nova boot ckf4879-cloud1 --flavor=m1.vcomputer 
+--image=8b642d42-1fc6-4d18-a85f-fd9783a17a30 
+--nic net-id=9ef58b11-7583-4868-83d4-97acda50ae9d 
+--config-drive=true ----------------虚机启动config-driver方式
+--user-data /root/ckf4879-test-data.txt--------把要修改的密码按照一定格式写在这个文件中，通过该参数进行传递
+===============
+cloud-init 默认会将 instance 的名字设置为 hostname。
+可利用 cloud-init 的set_hostname 模块实现。set_hostname 它会查询 metadata 中 hostname 信息，默认值就是 instance 的名字
+
+#cloud-config
+hostname: my1.cloudman.cc
+manage_etc_hosts: true 
+说明如下：
+cloud-init 只会读取以 #cloud-config 开头的数据，所以这一行一定要写对。
+hostname: my1.cloudman.cc 告诉 cloud-init 将 hostname 设置为 my1.cloudman.cc。
+manage_etc_hosts: true 告诉 cloud-init 更新 /etc/hosts 文件
+
+官方的 cloud image 默认只能通过 ssh key 登录。我们可以利用set-passwords 模块为用户设置密码并启用密码登录
+ #cloud-config
+chpasswd:
+   list: |
+
+       root:123456
+
+       ubuntu:123456
+
+   expire: false
+
+ssh_pwauth: true
+
+说明如下：
+    root 和 ubuntu 用户密码设置为 123456。
+
+    ssh_pwauth 启用密码登录。
+
+
+

@@ -1,0 +1,223 @@
+http://www.cnblogs.com/feisky/p/3853734.html
+http://www.cnblogs.com/CloudMan6/p/6184912.html
+http://www.bubuko.com/infodetail-394125.html
+https://www.ibm.com/developerworks/cn/cloud/library/1506_xiaohh_openstacklb/
+http://fhjx1234.blog.51cto.com/1022919/1708553/
+http://blog.csdn.net/zhangli_perdue/article/details/50327361---------这个配置好
+https://docs.openstack.org/mitaka/networking-guide/config-lbaas.html --官网
+LoadBalancer为租户提供到一组虚拟机的流量的负载均衡，其基本实现为：在neutron-lbaas-agent中生成Haproxy的配置文件然后启动Haproxy
+数据模型主要由Pool,VIP,Member,HealthMonitor等四个对象组成。
+处在核心位置的是Pool（我倾向于把它命名成loadballancer）, 它代表一个负载均衡器。
+一个负载均衡器拥有一个VIP，也就是虚拟IP。虚拟IP中的虚拟其实是相对后面的Member而言，
+也就是说这个VIP不固定在任何一个Member上。用户访问这个VIP，有时由这个成员提供服务，有时由那个成员提供服务。
+Member是后台提供服务的服务器。
+HealthMonitor用来监控和检查后台服务器的联通情况。当检查到某个服务器不能使用时，负载均衡器就不会用它来向用户提供服务。
+一个pool可对应多个health monitor。有四种类型：PING、TCP、HTTP、HTTPS。每种类型就是使用相应的协议对member进行检测
+对于每一个 pool，Neutron 都会启动一个 haproxy 进程提供 load balancering 功能。
+在agent方生成Haproxy的配置文件然后启动Haproxy
+==================
+配置相关
+这是在agent代理节点上需要配置的
+在/etc/neutron/lbaas_agent.ini文件中配置interface_driver 和device_driver 
+interface_driver参数依赖与core L2 plugin使用了什么
+For OpenVSwitch:
+【interface_driver = neutron.agent.linux.interface.OVSInterfaceDriver】
+For linuxbridge:
+【interface_driver = neutron.agent.linux.interface.BridgeInterfaceDriver】
+配置完需要重启neutron-lbaas-agent服务
+
+在控制节点的上配置
+/etc/neutron/neutron_lbaas.conf文件中的service_provider参数
+/etc/neutron/neutron.conf文件中的service_plugins参数
+配置完需要重启systemctl restart neutron-server服务
+=====================
+以下知识点都是基于v2版本的负载均衡器
+网络服务通过neutron-lbaas服务插件提供称为“LBaaS v2”的负载平衡器功能
+
+LBaaS v2将监听器的概念添加到LBaaS v1负载均衡器中。 LBaaS v2允许您在单个负载平衡器IP地址上配置多个侦听器端口。
+有两个参考实现LBaaS v2。 一个是基于代理的实现与HAProxy。 代理处理HAProxy配置并管理HAProxy守护程序。 
+另一个LBaaS v2实现，Octavia，有一个单独的API和单独的工作进程
+openstack octavia 是 openstack lbaas的支持的一种后台程序，提供为虚拟机流量的负载均衡。
+实质是类似于trove，调用 trove 以及neutron的api生成一台安装好haproxy和keepalived软件的虚拟机，并连接到目标网络
+目前，v1和v2负载平衡器之间不存在迁移路径。 如果您选择从v1切换到v2，则必须重新创建所有负载平衡器，池和运行状况监视器
+=================
+/etc/neutron/neutron.conf中的service_plugins，这参数的作用是决定负载均衡器的版本是什么，V1还是v2
+=================
+在v2版上的负载均衡器
+V1和V2版本逻辑结构不一样
+负载均衡器
+负载均衡器占用Neutron网络端口，并具有从子网分配的IP地址。
+侦听器
+负载均衡器可以侦听多个端口上的请求。 这些端口中的每一个都由侦听器指定。
+
+为LBaaS v2 配置代理
+在控制节点上配置的
+
+1.将LBaaS v2服务插件添加到/etc/neutron/neutron.conf中的service_plugins配置指令。 插件列表用逗号分隔：
+
+service_plugins = [existing service plugins],neutron_lbaas.services.loadbalancer.plugin.LoadBalancerPluginv2
+
+2.将LBaaS v2服务提供程序添加到/etc/neutron/neutron_lbaas.conf的[service_providers]部分中的service_provider配置指令：
+
+service_provider = LOADBALANCERV2:Haproxy:neutron_lbaas.drivers.haproxy.plugin_driver.HaproxyOnHostPluginDriver:default
+
+在计算节点上配置的
+如果您有其他网络服务插件（例如VPNaaS或FWaaS）的现有服务提供商，请将[service_providers]部分中上面显示的service_provider行作为单独的行添加。 这些配置指令是可重复的，不能以逗号分隔。
+3.在/etc/neutron/lbaas_agent.ini中选择管理虚拟接口的驱动程序：
+
+[DEFAULT]
+interface_driver = INTERFACE_DRIVER
+
+用您环境中第2层代理使用的接口驱动程序替换INTERFACE_DRIVER。 例如，openvswitch用于Open vSwitch或linuxbridge用于Linux桥。
+4.运行neutron-lbaas数据库迁移：
+neutron-db-manage --subproject neutron-lbaas upgrade head
+
+5.如果您已部署LBaaS v1，现在停止LBaaS v1代理。 v1和v2代理无法同时运行。
+6.启动LBaaS v2代理：
+
+neutron-lbaasv2-agent \
+--config-file /etc/neutron/neutron.conf \
+--config-file /etc/neutron/lbaas_agent.ini
+
+7.重新启动网络服务以激活新配置。 您现在可以使用LBaaS v2代理创建负载平衡器
+==================
+负载均衡器可以用不同的方式实现，有用haproxy代理或者Octavia服务或者LVS服务
+vip_port_id是分配给负载平衡器网络端口的ID。 可以使用neutron floatingip-associate将自由浮动IP地址与负载均衡器关联
+neutron floatingip-associate FLOATINGIP_ID LOAD_BALANCER_PORT_ID
+配额可用于限制负载平衡器和负载平衡器池的数量。 默认情况下，两个配额都设置为10
+可以使用neutron quota-update命令调整配额
+ 例如：neutron quota-update --tenant-id TENANT_UUID --loadbalancer 25
+ 设置为-1会禁用租户的配额
+ 检索负载平衡器统计信息
+
+LBaaS v2代理每6秒为每个负载平衡器收集四种类型的统计信息。 用户可以使用neutron lbaas-loadbalancer-stats命令查询这些统计信息
+active_connections计数是代理轮询负载平衡器时处于活动状态的连接总数。 自上次启动负载平衡器以来，其他三个统计信息是累积的。
+ 例如，如果负载平衡器由于系统错误或配置更改而重新启动，则这些统计信息将被重置
+ ============================
+ 负载均衡知识点
+ 负载均衡（Load Balancing）是将来访的网络流量在运行相同应用的多个服务器之间进行分发的一种核心网络服务。
+ 它的功能由负载均衡器（load balancer）提供。负载均衡器可以是一个硬件设备，也可以由软件实现。它充当反向代理，
+ 在多个服务器之间分发网络或者应用流量。它常用来增加应用的访问容量（并发用户数）和可靠性，
+ 它也会通过降低服务器的负载来提高应用的总体性能
+ 负载均衡器一般可以分为两类：第4层负载均衡器和第7层负载均衡器。
+ 第 4 层负载平衡器：基于网络和传输层协议（IP，TCP，UDP等）来均衡负载
+ 第7层的负载均衡器：基于应用层协议比如 HTTP, SMTP, SNMP, FTP, Telnet 等均衡负载。
+ 比如对 HTTP 来说，第七层的负载均衡器能根据应用的特定数据比如 HTTP 头，
+ cookies 或者应用消息中的数据来做进一步的请求分发
+ 
+负载分发算法
+两种类型的负载均衡器都能接收请求，然后根据特定的算法将请求分发到特定的服务器。一些行业标准的算法是：
+
+    轮询 (Round robin)：轮流分发到各个（活动）服务器
+    加权轮循 (Weighted round robin)：每个服务器有一定的加权（weight），轮询时考虑加权。
+    最少连接 (Least connections)：转发到有最少连接数的服务器
+    最少响应时间 (Least response time)：转发到响应时间最短的服务器
+可靠性和可用性
+负载均衡器通过监控应用的健康状态来确保可靠性和可用性，并且只转发请求到能及时做出响应的服务和应用
+
+Session persistence （会话保持）
+会话保持表示在一个会话期间，转发一个用户的请求到同一个后端服务器。这对购物车或者付款类的请求非常重要。 常用的方法包括：
+    Source IP：相同来源的请求转发到同一个服务器
+    HTTP Cookie：该模式下，loadbalancer 为客户端的第一次连接生成 cookie，后续携带该 cookie 的请求会被某个 member 处理
+    APP Cookie：该模式下，依靠后端应用服务器生成的 cookie 决定被某个 member 处理
+	
+常见的开源软件负载均衡器
+    HAProxy
+    Linux Virtual Servers (LVS) - 包括在许多Linux发行版中的简单快速的4层负载均衡软件
+    Nginx - 一个快速可靠的web服务器也能当作代理和负载均衡器使用。它常常和 HAProxy一起用于缓存和压缩
+	
+部署模式
+tow-arms （双臂）模式
+也称为 in-line 模式，或者 bridge mode 模式，或者 transparent mode。此时，所有前端访问后端的网络都需要经过 LB，
+它本身也成为了一种 router。可见，此时的 LB 需要两个网卡，分别连接前端和后端
+
+One-arm （单臂）模式
+该模式中，LB 不处于前端和后端的通道上，而是在旁边。此时，LB 只使用一块网卡，而且该网卡和后端服务器处于同一个二层网络中。
+该 LB 的网卡将会被分配一个 virtual load-balanced IP （VIP）。需要注意的是，
+此时的 LB 需要对进来的网络包做 Source 和 Dest NAT 然后再交给某个后端服务器，
+使得后端服务器返回的网络包将会到达 LB 而不是直接到达前端，再由 LB 转交给前端。
+因为使用了 SNAT，因此后端看不到网络包的源IP，这在某些需要审计功能的情况下可能无法满足要求
+
+Direct Server Response 模式
+这种模式下，LB 只接收进来的网络包，转给后端服务器后，后端服务器直接将返回包发回给客户端。
+这种模式的好处是，可以提高网络的吞吐量，坏处是配置较为复杂
+
+HAProxy 是个著名的开源的软件 TCP（四层）/HTTP（七层） 负载均衡器和代理（proxy）软件，可以运行在 Linux，Solaris 和 FreeBSD 等系统上。
+它最常用的用途是通过在多个服务器（比如 web服务器，应用，数据库等）之间分发负载来改善一个服务器系统的性能和可靠性
+
+主要概念：
+    Frontend：定义请求如何被转发到 backend。
+    Backend：一组接收转发的请求的服务器。其定义包括分发算法和一组服务器的地址和端口。
+
+支持的分发算法：
+    Round robin：平均的将网络流量分发到多个 member。
+    Source IP：从某一个特定 IP 发来的网络请求，总是发到特定的 member。
+    Least connections：将收到的网络请求，发给当前负载均衡池中连接数最少的 member。如果所有的 member 连接数一样，则遵循 Round robin 的方式
+
+Health Check（健康检查）：
+    HAProxy 使用 Health Check 来确定一个 backend server 能不能接收转发的请求。这避免了在服务器不可用时需要手工删除它。
+	默认的 Health Check 是试着去和一个server 建立一个 TCP 连接
+	当一个 backend server 检查失败时，它就无法接受请求了，它就会自动被禁用，请求也不会被转发到该服务器上，直到它重新变为可用。
+	如果一个 backend 内的所有服务器都 health check 失败，其对应的服务就会变得不可用
+HAProxy 的核心在于其配置文件（etc/haproxy/haproxy.cfg）。Neutron 的 LBaas 其实也就是生成了该配置文件，然后由 HAProxy 去执行
+==============
+neutron里面的负载均衡
+OpenStack Neutron 默认以 HAProxy 为负载均衡的 driver
+Pool 
+代表负载后端的虚拟机池。在以 HAProxy 为 Driver 的情况下，一个 Pool 对应着在一个独立的 network namespace 
+中运行的 HAProxy 进程所管理的 backend。目前一个 pool 只能有一个 VIP。
+Health monitor
+它用来监测 pool 里面 member 的状态，支持 HTTP, TCP, 和 ping 等多种检测方法。在 Nuetron 中这是可选的，
+如果没有 Health monitor，pool 会一直认为所有的 member 都是 ACTIVE 状态，这样所有的 member 会一直出现在 VIP 的分发列表中，
+哪怕 member 对应的实例不能响应网络请求。这在实际应用中会造成负载均衡的响应异常
+
+===============
+LBaaS 所做的任务就是根据用户提出的负载均衡要求生成符合要求的HAProxy配置文件并启动 HAProxy，然后由 HAProxy 进行负载均衡
+不同的 LBaas drive 支持不同的部署模式。社区实现 LBaas HAPorxy driver 只支持 one-arm 模式。
+你可以部署LBaas Agent 在network 节点上，也可以部署在别的节点上
+可以部署多个 LBaas 节点（agent），每个 agent 上运行不同的物理负载均衡器。(即不同的负载均衡器驱动)
+=============
+在network节点上配置负载均衡的时候，既要指定使用什么二层交换机，是ovs还是bridge，也要指定是什么驱动，是haproxy还是lvs
+同时也要指定启动lbass插件，neutron server节点上，只需要启动使用什么插件就好了
+============
+网络节点上，neutron-lbaas-agent
+1、为每个带有 active VIP 的 pool 创建了一个 network namespace，它以 qlbaas-<pool UUID> 命名
+2、生成 haproxy 配置文件
+3、在 network namespace 中 启动了一个 haproxy 进程，使用生成的配置文件
+================
+当关联多个健康检查的时候，所有的健康检查项都通过了，才会认为是后端成员是active的
+Neutron LBaaS HAProxy agent health monitor 的一些细节：
+    只支持  TCP, HTTP, HTTPS，选择 PING 等同于选择 TCP。
+    TCP 不能显式指定用于健康检查的端口，而是使用负载均衡端口。
+    由 ACTIVE 变为 INACTIVE 状态的过程需要经过 min(timeout, inter) * fall 时长，也就是需要多次检查失败才行。
+    由 INACTIVE 变为 ACTIVE 状态的过程，只需要 min(timeout, inter) 时长，也就是一次检查成功就可以了
+    一个 Pool 可以关联多个 health monitor 执行不同类型的检查。只有当全部的 monitor 认为一个member 是 active 时，
+	该 member 的状态才是 ACTIVE，否则都会是 INACTIVE。
+在所用多个服务的模型中，多会有Scheduler调度出现
+===============
+代码流程
+控制节点上的 Neutron server
+1、根据配置文件，导入LBaas extension（service_plugins = *,lbaas，而 lbaas = neutron.services.loadbalancer.plugin:LoadBalancerPlugin）
+2、接到 lb-pool-create REST API 调用：
+3、根据 Scheduler 算法找到一个放置该 pool 的 LBaas agent
+（在通过调度算法选择agent时，系统已经把这个pool创建好了，这个可以通过neutron server的日志查看）
+4、进入 LoadBalancerAgentApi，通过 RPC 调用该 agent 所在节点上的 LBaas Plugin
+
+关于 Agent scheduler：
+
+一个 OpenStack 环境中可以有多个 LBaas agent，每个 agen 可能支持不同的物理负载均衡器，那么将新建的 pool 
+对应的物理负载均衡器部署到哪个 Agent 上就需要一个 Schedule 过程
+Neutron 默认只实现了ChanceScheduler： loadbalancer_pool_scheduler_driver = neutron.services.loadbalancer.agent_scheduler.ChanceScheduler。
+你也可以实现你的 Scheduler。默认的 ChanceScheduler 从活动的、支持该 Pool Provider（比如 haproxy）的所有 agent 中随机选择一个。
+
+网络节点上的 LBaas Plugin （class LoadBalancerPlugin）：
+0. 初始化：从配置文件 device_driver 中读取所有drivers
+1. 接到 REST API 调用后：
+1.1 执行 DB 操作
+1.2. 调用 driver 操作
+
+网络节点上的 HAProxy LBaas driver：
+1. 接收 RPC 通知，在 vip，pool，member，monitor 有变化时刷新 haproxy 进程
+2. 通过 RPC 获取该 pool 的所有逻辑配置
+3. 根据逻辑配置生成 haproxy 配置文件
+4. 在network namespace 中启动 haproxy 进程

@@ -1,0 +1,52 @@
+http://blog.csdn.net/rubbishcan/article/details/27343657
+http://blog.csdn.net/juvxiao/article/details/24801827
+https://wiki.openstack.org/wiki/BlockDeviceConfig
+nova boot --block-device 搜这个关键字
+需要查的资料，从--snapshot启动一个虚机
+==============
+--block-device参数的用法
+一般我们instacne使用的都是临时存储(也即Ephemeral storage) 随着instance生命周期结束， 也会消失。
+那我们boot from block volume的好处就是不会随着instance的生命周期结束而消失， 它是Persistent的， 永久的，
+当instance删除后， 这个bootable的volume可以被保存下来。有一点， 就是一个volume只能被用来创建一个instance。
+Boot From Volume源必须是Bootable的Volume
+
+nova boot --flavor 2 --block-device source=image,id=b119140c-9221-4f7c-867f-8631aafd03b2,dest=volume,size=10,
+shutdown=preserve,bootindex=0 mystanceFromVolume1
+流程：先是基于image创建block volume，然后从这个volume中boot instance mystanceFromVolume1。
+shutdown选项选为preserve, 而不要选为remove， 这样在instance关闭时， volume会被save下来；其中的size选项要求大于等于flavor中的disk大小
+同时我们的后端存储要有大于此size大小的空间
+（备注1：source参数还可以是snapshot, volume or blank）
+（备注2：id=UUID(image_id, snapshot_id or volume_id only if
+ using source image, snapshot or volume)
+===============
+--boot-volume参数的用法
+有了可用的Bootable Volume, 就不用通过image创建了，直接通过volume创建instance
+nova boot --flavor 2 --boot-volume f3f00ca1-5683-4e6b-8430-4dba1bbe3e5c boot_from_volume
+===========
+--block-device-mapping参数的用法----在虚机启动的时候，可以指定挂在一个存储卷，并指定存储卷的挂在点
+nova boot --image 4042220e-4f5e-4398-9054-39fbd75a5dd7  --flavor 2 --key-name mykey 
+--block-device-mapping vdc=13:::0 boot-with-vol-test
+（这个命令将引导一个新实例并同时附加一个卷。 ID 13的卷将作为/dev/vdc附加。它不是快照，不指定大小，并且在实例终止时不会被删除）
+参数意义如下：
+--block-device-mapping <dev-name=mapping>
+The block device mapping format is <dev-name>=<id>:<type>:<size(GB)>:<delete-on-terminate>
+
+dev-name
+A device name where the volume is attached in the system at /dev/dev_name 
+
+id
+The ID of the volume to boot from, as shown in the output of nova volume-list.
+
+type
+Either snap, which means that the volume was created from a snapshot, 
+or anything other than snap (a blank string is valid). In the example above, 
+the volume was not created from a snapshot, so we leave this field blank in our example below
+
+size (GB)
+The size of the volume in gigabytes. It is safe to leave this blank and have the Compute Service infer the size.
+
+delete-on-terminate
+A boolean to indicate whether the volume should be deleted when the instance is terminated. 
+True can be specified as True or 1. False can be specified as False or 0.
+
+

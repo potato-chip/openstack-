@@ -1,0 +1,307 @@
+openstack的Eventlet库在openstack服务中上镜率很高，尤其是在 服务的多线程 和 WSGI服务器并发处理请求的情况下，深入理解，很有必要
+eventlet库是由second life开源的高性能网络库
+其主要依赖两个关键的库：
+(1)、greenlet
+(2)、select.epoll(或者epoll类似的库)
+greenlet库是其并发的基础，eventlet库简单的对其进行封装之后，就构成了GreenTread。
+select库中的epoll则是默认的网络通信模型
+
+一、什么是协程
+1、协程是一条执行序列，拥有自己独立的栈、局部变量和指令指针，同时又与其他的协同程序共享全局变量和其他大部分东西
+
+2、线程与协程主要区别：
+一个多线程的程序可以同时运行几个线程，而协同程序需要彼此协作运行。
+一个具有多个协程的程序在任何时刻只能运行一个协程，并且正在执行的协程只会在自己显示的挂起时，执行才会暂停。
+
+二、协程的好处
+1、每个协程都有自己私有的栈和局部变量
+2、同一时间只有一个协程在运行，无需对全局变量进行加锁
+3、顺序可控，完全是由程序控制执行的顺序。而通常多线程一旦启动，运行时序是没法预测的，因此通常会给测试所有的程序带来问题。
+
+三、eventlet是什么，用来做什么
+1、eventlet是python库函数，一个处理和网络相关的，通过协程实现并发的库
+2、在eventlet里，把“协程”叫做greenthread(绿色线程)。
+所谓并发，就是开启了多个greenthread(绿色线程)（即协程），并且对这些greenthread进行管理，以实现非阻塞式的I/O。
+
+比如说用eventlet可以很方便的写一个性能很好的web服务器，或者是一个效率很高的网页爬虫，这都归功于eventlet的"绿色线
+
+程"，以及对“绿色线程”的管理机制。eventlet为了实现“绿色线程”，对python中和网络相关的几个标准库函数进行了改
+写，并且可以以补丁（patch）的方式导入到程序中，因为python的库函数只支持普通的线程，而不支持协程，eventlet称之为“绿化”。
+
+四、几个主要API的理解
+1、Greenthread Spawn（产生greenthread绿色线程）
+主要有3个函数可以创建绿色线程：
+(1)spawn(func, *args, **kwargs)
+创建绿色线程去运行func这个函数，后面的参数是传递给这个函数的参数。
+返回值是eventlet.GreenThread对象，这个对象可以用来接受func函数运行的返回值。
+在绿色线程池还没有满的情况下，绿色线程一被创建就会立刻执行。协程被创建出来，肯定是要有一定的任务要去执行，这里
+直接把函数当作参数传递进去，去执行一定的任务，就好像标准库中的线程用run()方法去执行任务一样。
+
+(2)spawn_n(func, *args, **kwargs)
+这个函数和spawn()类似，不同的就是它没有返回值，因而更加高效，这种特性，使它也有存在的价值。
+
+(3)spawn_after(seconds, func, *args, **kwargs)
+这个函数和spawn()基本上一样，都有一样的返回值，不同的是它可以限定在什么时候执行这个绿色线程，即在seconds秒之后，启动这个绿色线程
+
+2、Greenthread Control(控制greenthread)
+(1)sleep(seconds=0)
+中止当前的绿色线程，以允许其它的绿色线程执行
+(2)eventlet.GreenPool----这是一个类，调用的时候，创建了该类的一个实例，构造函数的参数有默认值，也可以自定义值
+这是一个类，在这个类中用set集合来容纳所创建的绿色线程，并且可以指定容纳线程的最大数量（默认是1000个），
+它的内部是用Semaphore和Event这两个类来对池进行控制的，这样就构成了线程池。其中该类里面，有几个比较重要的方法：
+running(self)：返回当前池中的绿色线程数
+free()：返回当前池中仍可容纳的绿色线程数
+spawn()、spawn_n()：创建新的绿色线程
+starmap(self, function, iterable) 和 imap(self, function, *iterables)：*iterables这个是一个可迭代对象
+前者实现的是从iterable中取出每一项作为function的参数来执行，后者则是分别从iterables中各取一项，作为function的参数去执行
+imap 返回结果的先后顺序和协程开始执行的先后顺序相同，也解释了为什么我们说绿色线程之间实质上是顺序执行的。
+如何imap中有后面的协程先执行完，那么先不返回主函数，等待其他协程执行完，再按照执行的顺序输出内容
+(3)eventlet.GreenPile
+这也是一个类，而且是一个很有用的类，在它内部维护了一个GreenPool对象和一个Queue对象。
+这个GreenPool对象可以是从外部传递进来的，也可以是在类内部创建的，GreenPool对象主要是用来创建绿色线程的，即在
+GreenPile内部调用了GreenPool.spawn()方法。而Queue对象则是用来保存spawn()方法的返回值的，即Queue中保存的是
+GreenThread对象。并且它还实现了next()方法，也就意味着GreenPile对象具有了迭代器的性质。所以如果我们要对绿色线
+程的返回值进行操作的话，用这个类是再好不过的了
+
+3、Network Convenience Functions（和网络相关的函数）
+这些函数定义在convenience.py文件中，对和socket相关的网络通信进行了包装，注意，这里用的socket是经过修改后的socket，以使它使用绿色线程，
+主要有以下一个函数：
+(1)connect(addr, family=socket.AF_INET, bind=None)
+主要执行了以下几个步骤：新建了一个TCP类型的socket，绑定本地的ip和端口，和远程的地址进行连接
+(2)listen(addr, family=socket.AF_INET, backlog=50)
+过程和connect()类似，只是把connect()换成了listen()，backlog指定了最大的连接数量
+(3)serve(sock, handle, concurrency=1000)
+这个函数直接创建了一个socket服务器，在它内部创建了一个GreenPool对象，默认的最大绿色线程数是1000，然后是一个循环来接受连接
+(4)wrap_ssl(sock, *a, **kw)
+给socket加上ssl(安全套接层)，对数据进行加密
+
+===================
+Eventlet协程又称GreenThread（绿色线程），所谓的并发，就是创建多个GreenThread，并对其进行管理,以实现非阻塞式的I/O
+eventlet为了实现“绿色线程”，竟然对python中和网络相关的几个标准库函数进行了改写，
+并且可以以补丁（patch）的方式导入到程序中，因为python的库函数只支持普通的线程，
+而不支持协程，eventlet称之为“绿化”。Openstack中的大部分项目都采用所谓的协程（coroutine）模型。
+openstack中的网络并发是以协程的方式进行并发的，python里面原始的多并发方式，通过多线程或多进程方式进行并发的
+====================
+协程与线程差不多，也就是一条执行序列，拥有自己独立的栈，局部变量和指令指针，同时又与其它协同程序共享全局变量和其它大部分东西。
+线程与协同程序的主要区别在于，一个具有多线程的程序可以同时运行几个线程，而协同程序却需要彼此协作地运行。
+就是说，一个具有多个协同程序的程序在任何时刻只能运行一个协同程序，并且正在运行的协同程序只会在其显示地挂起时，
+它的执行才会暂停.
+===================
+协程优点
+每个coroutine有自己私有的stack及局部变量
+同一时间只有一个coroutine在执行，无需对全局变量加锁
+顺序可控，完全由程序控制执行的顺序。而通常的多线程一旦启动，它的运行时序是没法预测的，
+因此通常会给测试所有的情况带来困难。所以能用coroutine解决的场合应当优先使用coroutine。
+==================
+Patching Functions（补丁方法）
+经过eventlet“绿化”过的模块都在eventlet.green中，导入他们主要有两种方法： 
+方法1：from eventlet.green import … + 
+import_patched(module_name,*additional_modules,**kw_additional_modules)，如:
+from eventlet.green import socket
+from eventlet.green import SocketServer
+BaseHTTPServer = eventlet.import_patched('BaseHTTPServer',
+                        ('socket', socket),
+                        ('SocketServer', SocketServer))
+BaseHTTPServer = eventlet.import_patched('BaseHTTPServer',
+                        socket=socket, SocketServer=SocketServer)
+						
+这种方法有个缺陷就是不支持“延迟绑定”(late binding)，比如在运行时导入模块
+
+方法2：monkey_patch(all=True,os=None, select=None, socket=None,thread=None,time=None,psycopg=None)，如：
+import eventlet
+eventlet.monkey_patch(socket=True, select=True)
+====================
+eventlet线程的知识点
+1. 绿色线程几乎没有开销，不用像保留普通线程一样保留“绿色线程”，每一个网络连接对应至少一个“绿色线程”；
+2. 绿色线程需要人为的设置使其互相让渡CPU控制权，而不是抢占。绿色线程既能够共享数据结构，又不需要显式的互斥控制，
+因为只有当一个绿色线程让出了控制权后其他的绿色线程才能访问彼此共享的数据结构。
+
+====================
+eventlet中协程、hub、线程、进程之间的关系
+_____________________________________
+| python process                        |
+|   _________________________________   |
+|  | python thread                   |  |
+|  |   _____   ___________________   |  |
+|  |  | hub | | pool              |  |  |
+|  |  |_____| |   _____________   |  |  |
+|  |          |  | greenthread |  |  |  |
+|  |          |  |_____________|  |  |  |
+|  |          |   _____________   |  |  |
+|  |          |  | greenthread |  |  |  |
+|  |          |  |_____________|  |  |  |
+|  |          |   _____________   |  |  |
+|  |          |  | greenthread |  |  |  |
+|  |          |  |_____________|  |  |  |
+|  |          |                   |  |  |
+|  |          |        ...        |  |  |
+|  |          |___________________|  |  |
+|  |                                 |  |
+|  |_________________________________|  |
+|                                       |
+|   _________________________________   |
+|  | python thread                   |  |
+|  |_________________________________|  |
+|   _________________________________   |
+|  | python thread                   |  |
+|  |_________________________________|  |
+|                                       |
+|                 ...                   |
+|_______________________________________|
+
+绿色线程是线程内的概念，同一个线程内的绿色线程之间是顺序执行的，绿色线程之间想要实现同步，
+需要开发人员在阻塞的代码位置显式植入CPU让渡，此时hub接管进行调度，寻找同一个线程内另一个可调度的绿色线程。
+注意绿色线程是线程内的概念，不能跨线程同步
+
+==================
+eventlet基本API
+一、孵化绿色线程
+eventlet.spawn(func, *args, **kw) 
+该函数创建一个使用参数 *args 和 **kw 调用函数 func 的绿色线程，多次孵化绿色线程会并行地执行任务。
+该函数返回一个greenthread.GreenThread 对象，可以用来获取函数 func 的返回值。
+
+eventlet.spawn_n(func, *args, **kw) 
+作用类似于spawn()，只不过无法获取函数 func 执行完成时的返回值或抛出的异常。该函数的执行速度更快
+
+eventlet.spawn_after(seconds, func, *args, **kw) 
+作用同于spawn()，等价于 seconds 秒后执行spawn()。可以对该函数的返回值调用 GreenThread.cancel() 退出孵化和阻止调用函数 func 
+
+二、控制绿色线程
+eventlet.sleep(seconds=0) 
+挂起当前的绿色线程，允许其他的绿色线程执行
+　　
+class eventlet.GreenPool 
+控制并发的绿色线程池，可以控制并发度，进而控制整个并发所消耗的内存容量，或限制代码某一部分的连接数等
+　　
+class eventlet.GreenPile 
+GreenPile 对象代表了工作块。该对象是一个可以向其中填充工作的迭代器，便于以后从其中读取结果
+　　
+class eventlet.Queue 
+便于执行单元之间进行数据交流的基本构件，用于绿色线程之间的通信，
+　　
+class eventlet.Timeout 
+可以向任何东西添加超时，在 timeout 秒后抛出异常 exception。当 exception 被忽视或为None时，
+Timeout 实例自身会被抛出。Timeout 实例是上下文管理器（context manager），因此可以在 with 语句中使用
+
+三、补丁函数
+eventlet.import_patched(modulename, *additional_modules, **kw_additional_modules) 
+引入标准库模块绿化后的版本，这样后续代码以非阻塞的形式执行，所需要的参数就是目标模块的名称，具体可参考 Import Green
+　　
+eventlet.monkey_patch(all=True, os=False, select=False, socket=False, thread=False, time=False) 
+在全局中为指定的系统模块打补丁，补丁后的模块是“绿色线程友好的”，关键字参数指示哪些模块需要被打补丁，
+如果 all 是真，那么所有的模块会被打补丁而无视其他参数；否则才由具体模块对应的参数控制对指定模块的补丁。多数参数为与自己同名的模块打补丁，如os, time, select，但是 socket 参数为真时，如果 ssl 模块也存在，会同时补丁socket模块和ssl模块，类似的，thread参数为真时，会补丁thread, threading 和 Queue 模块。
+可以多次调用monkey_patch()，详见 Monkeypatching the Standard Library
+
+四、网络应用
+eventlet.connect(addr, family=2, bind=None) 
+开启客户端套接字
+参数：
+addr – 目标服务器的地址，对于 TCP 套接字，这该参数应该是一个 (host, port) 元组
+family – 套接字族，可选，详见 socket 文档
+bind – 绑定的本地地址，可选
+返回：
+连接后的“绿色” socket 对象
+ 
+eventlet.listen(addr, family=2, backlog=50) 
+创建套接字，可以用于 serve() 或一个定制的 accept() 循环。设置套接字的 SO_REUSEADDR 可以减少打扰。
+参数：
+addr：要监听的地址，比如对于 TCP 协议的套接字，这是一个(host, port) 元组。
+family：套接字族。
+backlog：排队连接的最大个数，至少是1，上限由系统决定。
+返回：
+监听中的“绿色”套接字对象。
+eventlet.wrap_ssl(sock, *a, **kw) 
+将一个普通套接字转变为一个SSL套接字，与 ssl.wrap_socket() 的接口相同。可以使用 PyOpenSSL，
+但是在使用 PyOpenSSL 时会无视 cert_reqs 、ssl_version 、ca_certs 、do_handshake_on_connect 和suppress_ragged_eofs 等参数。
+建议使用创建模式来调用该方法，如： wrap_ssl(connect(addr))  或  wrap_ssl(listen(addr),server_side=True) 。
+这样不会出现“裸”套接字监听非SSL会话的意外。
+返回：
+“绿色” SSL 对象。
+　　
+eventlet.serve(sock, handle, concurrency=1000) 
+在给定的套接字上运行服务器，对于每一个到来的客户端连接，会在一个独立的绿色线程中调用参数 handle ，
+函数 handle 接受两个参数，一是客户端的socket对象，二是客户端地址：
+def myhandle(client_sock, client_addr):
+    print("client connected", client_addr)
+ 
+eventlet.serve(eventlet.listen(('127.0.0.1', 9999)), myhandle)
+函数 handle 返回时将会关闭客户端套接字
+serve() 会阻塞调用的绿色线程，直到服务器关闭才返回，如果需要绿色线程立即返回，可以为 serve() 孵化一个新的绿色线程
+任何 handle 抛出的没有捕获的异常都会被当做serve()抛出的异常，造成服务器的终止，因此需要弄清楚应用会抛出哪些异常。handle 的返回值会被忽视。
+抛出一个 StopServe 异常来妥善地结束server – that’s the only way to get the server() function to return rather than raise.
+参数 concurrency 控制并发度，是任意时刻处理请求的绿色线程的数量上限，当服务器达到该上限时，它不会接受新的连接，直到有现有的完成为止。
+
+class eventlet.StopServe 
+用于妥善退出 serve() 的异常类
+
+五、绿化这个世界
+所谓”绿化”是指绿化后的Python环境支持绿色线程的运行模式。Python原生的标准库不支持eventlet这种绿色线程之间互相让渡CPU控制权的执行模型，为此eventlet开发者改写了部分Python标准库（自称”补丁“）。如果想在应用中使用eventlet，需要显式地绿化自己要引入的模块。
+
+方法一 from eventlet.green import ...
+
+第一种方法是从eventlet.green包中引入需要的模块，eventlet.green包中引入的网络相关模块与Python标准库同名且提供相同的接口，
+只是进行过绿化补丁，因此支持绿色线程。比如：	
+from eventlet.green import socket
+from eventlet.green import threading
+from eventlet.green import asyncore
+
+方法二 import_patched()
+
+如果eventlet.green中缺乏所需要引入的模块，可以使用 import_patched() 函数，该函数可以绿化参数中指定的模块，
+该函数的参数就是要引入并绿化的模块名称：
+eventlet.patcher.import_patched(module_name, *additional_modules, **kw_additional_modules) 
+以绿化的方式引入一个模块，这样该模块中如果用到网络相关的库时将会自动替换为绿化后的版本，比如引入的模块中用到了socket库，那么import_patched()后的模块使用的将不再是原生的Python socket模块而是绿化后的socket模块。
+该方法的一个问题是不能正确处理延迟引入（late ）
+该方法的另一个好处是可以通过参数 *additional_modules 和 **kw_additional_modules 指定哪些模块需要被绿化，比如：
+	
+from eventlet.green import socket
+from eventlet.green import SocketServer
+BaseHTTPServer = eventlet.import_patched('BaseHTTPServer',
+                        ('socket', socket),
+                        ('SocketServer', SocketServer))
+#BaseHTTPServer = eventlet.import_patched('BaseHTTPServer',
+#                        socket=socket, SocketServer=SocketServer)
+
+此时只绿化 BaseHTTPServer 中引用的 socket 和 SocketServer 模块，注释掉的代码功能与它上面三行的功能相同。
+
+方法三　　猴子补丁
+eventlet中的猴子补丁是在运行时修改已有的代码，动态替换已有的标准库：
+eventlet.patcher.monkey_patch(os=None, select=None, socket=None, thread=None, time=None, psycopg=None) 
+如果调用该方法时没有指定参数，会为所有默认参数中提到的库打补丁：	
+import eventlet
+eventlet.monkey_patch()
+
+关键字参数指示哪些模块需要被打补丁，如果 all 是真，那么所有的模块会被打补丁而无视其他参数；否则才由具体模块对应的参数控制对指定模块的补丁。
+多数参数为与自己同名的模块打补丁，如os, time, select，但是 socket 参数为真时，如果 ssl 模块也存在，会同时补丁socket模块和ssl模块，
+类似的，thread参数为真时，会补丁thread, threading 和 Queue 模块：	
+import eventlet
+eventlet.monkey_patch(socket=True, select=True)
+在应用中越早调用monkey_patch()越好，比如作为主模块的第一行代码，这样做可以避免例如下面的情形：已经定义一个子类，
+该子类继承一个需要被补丁的父类，但是此时还没有猴子补丁该父类所在的模块。
+eventlet.patcher.is_monkey_patched(module) 
+判断指定的模块是否已经被猴子补丁了。
+=========================
+简单服务器---在原生的socket连接时，当处于accept时，服务器进处于阻塞状态，等待客户端的连接，要想连接多个
+客户端，就需要在这里使用多进程或者多线程，而eventlet模块中，由于绿化的作用，只有在遇到i/o操作的时候，
+才会切换，像这种不是i/o操作的，可以用协程并行处理
+import eventlet
+ 
+def handle(client):
+    while True:
+        c = client.recv(1)
+        if not c: break
+        client.sendall(c)
+ 
+server = eventlet.listen(('0.0.0.0', 6000))
+pool = eventlet.GreenPool(10000)
+while True:
+    new_sock, address = server.accept()
+    pool.spawn_n(handle, new_sock)
+
+server = eventlet.listen(('0.0.0.0', 6000)) 一句创建一个监听套接字；
+pool = eventlet.GreenPool(10000) 一句创建一个绿色线程池，最多可以容纳10000个客户端连接；
+new_sock, address = server.accept() 一句很特殊，由于这里创建的服务器套接字是经过绿化的，
+所以当多个连接到来时在accept()这里不会阻塞，而是并行接收
+pool.spawn_n(handle, new_sock) 一句为每一个客户端创建一个绿色线程，
+该绿色线程不在乎回调函数 handle 的执行结果，也就是完全将客户端套接字交给回调 handle 处理
+

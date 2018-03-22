@@ -1,0 +1,38 @@
+RabbitMQ 是实现了高级消息队列协议（AMQP）的开源消息代理软件（亦称面向消息的中间件）
+AMQP 是一个定义了在应用或者组织之间传送消息的协议的开放标准
+AMQP 目标在于解决在两个应用之间传送消息存在的下列问题：
+    网络是不可靠的 =>消息需要保存后再转发并有出错处理机制
+    与本地调用相比，网络速度慢 =>得异步调用
+    应用之间是不同的（比如不同语言实现、不同操作系统等） =>得与应用无关
+    应用会经常变化 =>同上
+AMQP 使用异步的、应用对应用的、二进制数据通信来解决这些问题
+RabbitMQ 是 AMQP 的一种实现，它包括Server （服务器端）、Client （客户端） 和 Plugins （插件）。RabbitMQ 服务器是用 Erlang 语言编写的
+
+关于消息 message
+消息的几个重要属性：
+    routing_key：Direct 和 Topic 类型的 exchange 会根据本属性来转发消息。
+    delivery_mode: 将其值设置为 2 将用于消息的持久化，持久化的消息会被保存到磁盘上来防止其丢失。下面章节 3 有描述。
+    reply_to：一般用来表示RPC实现中客户端的回调队列的名字。下面章节 4 有描述。
+    correlation_id：用于使用 RabbitMQ 来实现 RPC的情形。下面章节 4 有描述。
+    content_type：表示消息data的编码格式名称。实际上RabbitMQ只负责原样传送消息因此不会使用该属性，该属性只被 Publisher 和 Consumer 使用。
+消息的确认/删除机制：
+Consumer 处理消息可能会失败，那么 RabbitMQ 怎么知道什么时候来删除 queue 中的消息呢？它使用两种机制：
+    当 RabbitMQ 主动将消息发给 Consumer 以后，它会删除消息
+    当 Consumer 发回一个确认后，RabbitMQ 会删除消息。
+第二种情况下，如果 RabbitMQ 没收到确认，它会把消息重新放进队列（re-queued）并添加标识 'redelivered' 表明该消息之前已经发送过 ，
+如果没有Consumer的话，消息将保持到有下一个 Consumer 为止。
+Consumer 可以主动告诉 RabbitMQ 消息处理失败了（拒绝消息），并告知RabbitMQ 是删除消息还是重新放进队列。
+================
+Kombu是一个为Python写的消息库，目标是为AMQ协议提供一个傻瓜式的高层接口，让Python中的消息传递变得尽可能简单，
+并且也提供一些常见消息传递问题的解决方案。
+AMQP全称Advanced Message Queuing Protocol，是一个开放标准协议，定义一个异步消息传递所使用的应用层协议规范。知名的RabbitMQ就是它的一个实现。
+=================
+消息服务擅长于解决多系统、异构系统间的数据交换（消息通知/通讯）问题，你也可以把它用于系统间服务的相互调用（RPC）
+
+RabbitMQ简介
+AMQP，即Advanced Message Queuing Protocol，高级消息队列协议，是应用层协议的一个开放标准，
+为面向消息的中间件设计。消息中间件主要用于组件之间的解耦，消息的发送者无需知道消息使用者的存在，反之亦然。
+AMQP的主要特征是面向消息、队列、路由（包括点对点和发布/订阅）、可靠性、安全。
+RabbitMQ是一个开源的AMQP实现，服务器端用Erlang语言编写，支持多种客户端，
+如：Python、Ruby、.NET、Java、JMS、C、PHP、ActionScript、XMPP、STOMP等，支持AJAX。
+用于在分布式系统中存储转发消息，在易用性、扩展性、高可用性等方面表现不俗。

@@ -1,0 +1,116 @@
+总归一句话，这个模块把http的请求报文和响应报文包装成，可以用对象的方式进行访问
+Request是对请求变量environment的一个对象封装
+
+WebOb是一个Python库，主要是用在WSGI中对请求环境变量request environment（也就是WSGI应用中的参数environ）进行包装（提供wrapper(包装)），
+并提供了一个对象来方便的处理返回response消息。WebOb提供的对象映射了大多数的HTTP方法，包括头解析，content协商等。
+这里的映射，就是说只需要对对象进行操作，就可以完成HHTP的方法，从而大大简化开发难度
+WebOb provides objects for HTTP requests and responses.
+Specifically it does this by wrapping the WSGI request environment and response status/headers/app_iter(body).
+The request and response objects provide many conveniences(方便、便利) for parsing HTTP request and forming HTTP responses.
+Both objects are read/write: as a result, WebOb is also a nice way to create HTTP requests and parse HTTP responses;
+however, we won't cover that use case in this document.
+
+WebOb为HTTP的请求和响应提供了相应的对象。通过对WSGI request environment进行wrap来简化操作。
+Request
+webob.Request对象是对WSGI environ dictionary的一个包装。后者这个字典以键值的形式描述了一个HTTP请求包括path信息和query string，
+以及一个与文件对象类似的秒速请求的body，以及一些其他的自定义keys。如下可以创建一个简单的Request对象。
+>>>from webob import Request
+>>>environ = {'method': 'GET'}  
+>>>req = Request(environ) 
+强调，The request object wraps the environment，仅仅是包装，所以你可以对这个environ进行读写的。
+可以通过req.environ可以访问到这个environ。但是一般都没必要这样做，直接用这个Request对象来操作就好了。
+如下
+>>>req.environ
+{'method': 'GET'}
+>>>req.method 
+'GET'
+此外，还有，req.accept_language, req.content_length, req.user_agent等
+一个WSGI的environ需要一些必须的参数，所以Request对象有一个构造器，在创建的时候就会自动添加最小的一些必要的项
+pprint用来打印字典等效果很好的。这里简单对url做一个说明，/article?id=1我们可以看到article是属于PATH中的，
+而?分割的是参数，也就是query_string。如果指定了多个参数，也是一起放在QUERY_STRING里面的
+
+Request body
+req.body是一个描述了请求body（比如，POST一个表单，PUT的内容）的一个类文件对象（file-like object），
+我们先把body设置为一个字符串，会被自动转换为一个类文件对象，通过req.body可以访问到body的内容。
+>>> req.body="this is body"
+>>> req.body
+'this is body'
+>>> type(req.body)
+<type 'str'>
+Method & URL
+一个请求的所有属性都可以通过Request对象的属性来访问
+
+Headers
+一个请求的header主要是content的定义以及host的定义，可能还会带有一些认证信息。注意，这里的操作大小写敏感。
+>>> req.headers['Content-Type'] = 'application/x-www-urlencoded'
+>>> req.headers.items()
+[('Content-Length', '4'), ('Content-Type', 'application/x-www-urlencoded'), ('Host', 'localhost:80')]
+>>> req.environ['CONTENT_TYPE']
+'application/x-www-urlencoded'
+
+Modifying the request
+req.copy()会拷贝这个请求，包括environ字典以及来自environ[‘wsgi.input’]的body信息
+Calling WSGI Applications
+
+熟悉了WSGI以后，这个request对象明显就是给WSGI应用来使用的。这里有一种subrequest形式，这个如何解释我还要看一下，使用形式如下：
+
+>>> req = Request.blank('/')
+>>> def wsgi_app(environ, start_response):
+...     start_response('200 OK', [('Content-type', 'text/plain')])
+...     return ['Hi!']
+>>> req.call_application(wsgi_app)
+('200 OK', [('Content-type', 'text/plain')], ['Hi!'])
+
+返回的结果是 (status_string, header_list, app_iter)的形式，如果返回的app_iter有close()方法，则需要我们自己去执行。
+ 应用返回的信息，是给response用的，所以我们用Response对象来处理返回信息。
+
+>>> res = req.get_response(wsgi_app)
+>>> res
+<Response ... 200 OK>
+>>> res.status
+'200 OK'
+>>> res.headers
+ResponseHeaders([('Content-type', 'text/plain')])
+>>> res.body
+'Hi!'
+
+*****************
+Response
+Response对象包含了所有产生WSGI respnse的内容，它的实例其实就是一个WSGI 应用。
+一个WSGI的回应包含了一个状态status,一个header的列表，一个body（或者一个能产生body的迭代器）
+Core Attributes核心属性，这些属性都可以通过构造器设置，如Response(charset='utf8')
+元组列表，通过 res.headers.add(key, value) 和res.headers.getall(key)添加和读取，一个key可以对应多个值。
+
+Body & app_iter
+res.body包含了整个返回body，就是一个字符串！还有另外一种形式res.app_iter属性，表示body是一个迭代器。
+WSGI应用可以返回迭代器，而不用返回字符串
+***************
+Webob中针对WSGI的装饰器
+Webob为WSGI主要提供了一个装饰器wsgify，作用就是将一个函数转换成一个WSGI应用
+class webob.dec.wsgify(func=None, RequestClass=None, args=(), kwargs=None, middleware_wraps=None)
+将一个request作为输入，response作为输出的函数wrap包装成一个WSGI应用(既然是wsgi应用，那么就完全符合wsgi应用的参数特征)
+
+用法如下：
+@wsgify
+def myfunc(req):
+    return webob.Response('hey there')
+	
+经过装饰后，函数myfunc作为一个WSGI应用，有两种调用方式：
+    app_iter = myfunc(environ, start_response)
+    resp = myfunc(req)
+如果处理中触发了webob.exc异常，异常信息会传入Response中
+
+装饰器还可以自定义，一般通过一个subrequest来实现
+class MyRequest(webob.Request):
+    @property
+    def is_local(self):
+        return self.remote_addr == '127.0.0.1'
+@wsgify(RequestClass=MyRequest)
+def myfunc(req):
+    if req.is_local:
+        return Response('hi!')
+    else:
+        raise webob.exc.HTTPForbidden
+可以看到，经过这种方式，我们在整个WSGI中增加了request一些自定义内容的处理
+
+另外一种自定义方式就是给装饰器wsgify加入参数支持，从而一个函数就可以创建多个WSGI应用

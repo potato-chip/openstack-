@@ -1,0 +1,120 @@
+一、
+1. “系统时间”与“硬件时间”
+系统时间: 一般说来就是我们执行 date 命令看到的时间，linux系统下所有的时间调用（除了直接访问硬件时间的命令）都是使用的这个时间。
+硬件时间: 主板上BIOS中的时间，由主板电池供电来维持运行，系统开机时要读取这个时间，并根据它来设定系统时间
+（注意：系统启动时根据硬件时间设定系统时间的过程可能存在时区换算，这要视具体的系统及相关设置而定）。
+二、查看系统时间和硬件时间
+1. 系统时间 date
+直接调用 date，得到的是本地时间。如果想得到UTC时间的话，使用 date -u。
+2. 硬件时间 /sbin/hwclock
+直接调用 /sbin/hwclock 显示的时间就是 BIOS 中的时间吗？未必！
+这要看 /etc/sysconfig/clock 中是否启用了UTC，如果启用了UTC（UTC=true），
+显示的其实是经过时区换算的时间而不是BIOS中真正的时间，如果加上 --localtime 选项，则得到的总是 BIOS 中实际的时间.
+三、系统启动和关闭时，硬件时间与系统时间之间的同步有两种方式(假设在中国，用CST代表本地时间)：
+方式A: 使用UTC（对linux就是 /etc/sysconfig/clock 中 UTC=true）
+开机: BIOS------->UTC（将BIOS中的时间看成是UTC）------(时区变化)----->CST
+关机: CST -------(时区变化)----->UTC-------存储到------>BIOS
+方式B: 不使用UTC（对linux就是 /etc/sysconfig/clock 中 UTC=false）
+开机: BIOS--------------------->CST（将BIOS中的时间看成是CST）
+关机: CST ---------存储到------>BIOS
+四、系统时间和硬件时间的同步
+同步系统时间和硬件时间，可以使用hwclock命令。
+//以系统时间为基准，修改硬件时间
+[root@localhost ~]# hwclock --systohc <== sys（系统时间）to（写到）hc（Hard Clock）
+[root@localhost ~]# hwclock -w
+//以硬件时间为基准，修改系统时间
+[root@localhost ~]# hwclock --hctosys
+[root@localhost ~]# hwclock -s
+===================
+Linux命令之hwclock - 查询和设置硬件时钟
+用途说明
+hwclock命令，与clock命令是同一个命令，主要用来查询和设置硬件时钟（query and set the hardware clock (RTC)）。
+RTC=Real Time Clock，也就是硬件时钟。在Linux中有硬件时钟与系统时钟等两种时钟。硬件时钟是指主机板上的时钟设备，
+也就是通常可在BIOS画面设定的时钟。系统时钟则是指kernel中 的时钟。所有Linux相关指令与函数都是读取系统时钟的设定。
+因为存在两种不同的时钟，那么它们之间就会存在差异。根据不同参数设置，hwclock命令既可以将硬件时钟同步到系统时钟，
+也可以将系统时钟同步到硬件时钟。
+
+关于系统时钟与硬件时钟的关系
+当Linux启动时，系统时钟会去读取硬件时钟的设定，之后系统时钟即独立运作。
+如果使用date命令修改了系统时间，并不会自动去修改硬件时钟，因此，当系统下次重启时，系统时钟还会从硬件时钟去取，date设置的时间就无效了
+常用参数
+  -r, --show         读取并打印硬件时钟（read hardware clock and print result ）
+  -s, --hctosys      将硬件时钟同步到系统时钟（set the system time from the hardware clock ）
+  -w, --systohc     将系统时钟同步到硬件时钟（set the hardware clock to the current system time ）
+要使系统时间准确，最好还是使用ntp方式，使用ntpdate命令从网络同步时间，再同步到硬件时钟
+
+linux系统设置硬件时钟时，提供两种时区选择，一种为本地时区，此时硬件时间与系统时间相同；
+
+另一种为UTC时区，此时硬件时间存的是UTC时间，系统初始化时会转换为本地时间后再设置为系统时钟的时间
+================
+windows采用的就是当地时间。所以安装linux系统时，不要选择使用UTC
+============
+
+zdump 命令来读取 /etc/localtime 文件的内容：
+zdump -v /etc/localtime
+============
+在linux中与时间相关的文件有
+ /etc/localtime
+ /etc/timezone
+其中，/etc/localtime是用来描述本机时间，而 /etc/timezone是用来描述本机所属的时区
+====================
+1）/etc/sysconfig/clock 文件，只对 hwclock 命令有效，且只在系统启动和关闭的时候才有用（修改了其中的 UTC=true 到 UTC=false 的前后，执行 hwclock (--utc, 或 --localtime) 都没有变化，要重启系统后才生效）；
+
+ 2）/etc/rc.d/rc.sysinit 文件，run once at boot time，其中有从硬件时钟同步时间到系统时间的操作；
+
+ 3）hwclock --localtime 的输出，才是硬件时钟真正的时间。如果输出结果带时区（比如CST），还要看/etc/sysconfig/clock里的UTC参数，如果 UTC=false，那时区有意义；如果 UTC=true，那时区没意义，实际上是UTC时间。
+
+ 4）在 /etc/sysconfig/clock 中 UTC=false 时，date、hwclock、hwclcok --localtime 输出的时间应该都一致，且此时 hwclock --utc是没有意义的；
+
+ 5）在 /etc/sysconfig/clock 中 UTC=ture 时，date、hwclock 的输出是一致的，hwclock --localtime 的输出则是UTC时间；
+
+ 6）如果不想在输出中带时区，则 export LANG=C ，然后再运行 hwclock 就没有什么CST了，免得时区误导你；
+
+ 7）hwclock --utc 很闹腾，还是别看了，你会晕的。。。
+
+8）系统关闭时会同步系统时间到硬件时钟，系统启动时会从硬件时钟读取时间更新到系统，
+这2个步骤都要根据 /etc/sysconfig/clock 文件中UTC的参数来设置时区转换。
+
+==================
+世界协调时间(Universal Time Coordinated,UTC),GPS 系统中有两种时间区分，一为UTC，
+另一为LT（地方时）两者的区别为时区不同，UTC就是0时区的时间，(LocalTime)地方时为本地时间，
+如北京为早上八点（东八区），UTC时间就为零点，时间比北京时晚八小时，以此计算即可
+=====================
+在虚拟化环境中，虚拟机在长时间运行过程中，时间会变慢，通常的作法是配置ntpdate定时与时间服务器进行时间同步的计划任务。
+KVM虚拟机默认采用utc时间
+=====================
+原因是Linux操作系统是以主机板CMOS时间做为格林威治标准时间，再根据系统设置的时区来确定目前系统时间。
+但是一般Windows系统并不如此，Windows操作系统直接把CMOS时间认定为目前系统时间，
+不再根据时区转换。所以，Windows VM与宿主系统时间会发现相差8小时
+==================
+/etc/sysconfig/clock 文件配置的是美国时间：
+[root@pps ~]# cat /etc/sysconfig/clock
+ZONE="America/Los_Angeles"
+UTC=true
+ARC=false
+UTC为true表示RTC保存的时间是UTC时间，false表示保存的是本地时间。
+==================
+hwclock --query or set the hardware clock (RTC)
+hwclock  is  a tool for accessing the Hardware Clock.  You can display the current time, 
+set the Hardware Clock to a specified time, set the Hardware Clock from the System Time, 
+or set the  System  Time  from  the  Hardware Clock.
+You can also run hwclock periodically to add or subtract time from the Hardware Clock to compensate
+for system‐atic drift (where the clock consistently loses or gains time at a certain rate when left to run).
+You need exactly one of the following options to tell hwclock what function to perform:
+
+-r, --show---显示的是当地时间，即使你设置utc时间值
+Read the Hardware Clock and print the time on standard output.  
+The time shown is always in local  time,even  if you keep your Hardware Clock in Coordinated Universal Time. 
+See the --utc option.  Showing the Hardware Clock time is the default when no function is specified.
+
+-u, --utc
+--localtime----是存的utc时间还是locatime时间，这个hwclock无法告诉你
+Indicates that the Hardware Clock is kept in Coordinated Universal Time or local time, respectively. 
+It is your choice whether to keep your clock in UTC or local time, but nothing in  the  clock  tells  which
+you've chosen.  So this option is how you give that information to hwclock.
+If  you  specify the wrong one of these options (or specify neither and take a wrong default), both set‐
+ting and querying of the Hardware Clock will be messed up.
+If you specify neither --utc nor --localtime, the default is  whichever  was  specified  the  last  time
+hwclock  was  used  to  set  the clock (i.e.  hwclock was successfully run with the --set, --systohc, or
+--adjust options), as recorded in the adjtime file.  If the adjtime file doesn't exist, the  default  is
+UTC time.

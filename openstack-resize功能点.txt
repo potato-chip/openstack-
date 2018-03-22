@@ -1,0 +1,35 @@
+1、nova resize命令的使用方式
+nova help resize
+usage: nova resize [--poll] <server> <flavor>
+Resize a server.
+Positional arguments:
+  <server>  Name or ID of server.
+  <flavor>  Name or ID of new flavor.
+Optional arguments:
+  --poll    Report the server resize progress until it completes.
+
+2、nova resize的作用
+Resize 的作用是调整 instance 的 vCPU、内存和磁盘资源。
+Instance 需要多少资源是定义在 flavor 中的，resize 操作是通过为 instance 选择新的 flavor 来调整资源的分配。
+
+3、nova resize原理解析
+在使用nova resize去修改虚拟机配置的时候，实际调用的是migrate(迁移)的代码
+
+4、为什么需要在resize的时候进行迁移？
+进行迁移，面对的场景一般是用户增加配置（disk等），这个时候出于OpenStack的一个调度策略，
+会进行nova-schedule来选择计算节点中最能够满足的一台机器进行resize（所以也有可能调度到本机）
+resize与migrate的区别是在迁移的同时，是否改变虚拟机的flavor
+
+5、迁移生效的方式
+方式1、改代码，
+方式2、直接修改数据库然后使得resize生效
+nova数据库表instance_extra表里面flavor字段信息nova_object.data中的root_gb、name、flavorid、memory_mb、vcpus、id（对应 instance_types 表中的主键）
+在修改了对应的数据之后，同时修改instances表中对应的flavor信息相关字段（确保一致性），然后执行nova-list或者刷新Dashboard会看到信息都修改了
+最后执行nova --hard reboot instance-uuid 来使得libvirt.xml文件通过元数据注入重新生效，进入虚拟机，通过cat /proc/meminfo会看到虚拟机的实际配置
+有时候，会更改一些网络信息，通过instance_info_caches进行生效
+
+6、在本机生效的方法
+为了使得VM在resize之后能够resize至本机，在/etc/nova/nova.conf配置文件中添加如下
+allow_resize_to_same_host=True
+配置好之后重启控制节点所有nova-*服务和计算节点nova-compute服务
+
